@@ -1178,9 +1178,9 @@ const solarDemoGroup = (() => {
     }
   }
 
-  // Place the demo group at z = -200 (north), rotated 180°
+  // Place the demo group at z = -200 (north of the substation).
+  // rotation.y is set by the row loop below (override here if needed).
   group.position.set(0, 0, -200);
-  group.rotation.y = Math.PI;
 
   return group;
 })();
@@ -1195,12 +1195,17 @@ const ROW_Z = -200;
 const totalWidth = UNITS * GROUP_W + (UNITS - 1) * GROUP_GAP;
 const startX = -totalWidth / 2 + GROUP_W / 2; // center the row
 
-// Keep the original (first instance) at index 0
+// Keep the original (first instance) at index 0 — yaw 0 so panels face -Z (toward substation at z=0)
 const solarRow = [solarDemoGroup];
+// Note: solarDemoGroup.position is set in the IIFE above; the rotation
+// applied there (180°) means the master currently faces +Z. We override
+// it here to 0 so the entire row faces the substation (toward -Z from its
+// position at z=-200).
+solarDemoGroup.rotation.y = 0;
 for (let i = 1; i < UNITS; i++) {
   const clone = solarDemoGroup.clone(true);
   clone.position.set(startX + i * (GROUP_W + GROUP_GAP), 0, ROW_Z);
-  clone.rotation.y = Math.PI;
+  clone.rotation.y = 0;
   // Tag clone children for selectableId (selection state propagation)
   clone.traverse((child) => {
     if (child.isLineSegments) {
