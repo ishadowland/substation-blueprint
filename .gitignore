@@ -2,4 +2,4 @@
 # Keep this file present so git ignores nothing unintentionally.
 .DS_Store
 Thumbs.db
-*.log
+*.logOPC-TASK.md
