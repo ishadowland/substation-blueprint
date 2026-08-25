@@ -1271,11 +1271,11 @@ const solarPostEdgeGeom = new THREE.EdgesGeometry(
   new THREE.BoxGeometry(0.2, POST_H, 0.2),
 );
 
-// Cell grid (4 vertical + 1 horizontal per panel)
+// Cell grid (2 vertical + 1 horizontal per panel — halved from 4 verticals to reduce vertex count)
 function buildCellGridGeom() {
   const pts = [];
-  for (let i = 1; i <= 3; i++) {
-    const x = -SOLAR_PANEL_W / 2 + (i / 4) * SOLAR_PANEL_W;
+  for (let i = 1; i <= 2; i++) {
+    const x = -SOLAR_PANEL_W / 2 + (i / 3) * SOLAR_PANEL_W;
     pts.push(new THREE.Vector3(x, SOLAR_PANEL_T / 2 + 0.002, -SOLAR_PANEL_H / 2));
     pts.push(new THREE.Vector3(x, SOLAR_PANEL_T / 2 + 0.002, SOLAR_PANEL_H / 2));
   }
@@ -1446,26 +1446,33 @@ solarCellGridGeom.dispose();
 solarPostEdgeGeom.dispose();
 
 // ─── Three solar farms: center + 100m gap on each side ─────────────────
-// Main center farm (the original 792 units)
-solarFarmGroup.removeFromParent(); // detach the unused solarFarmGroup declared above
-const solarFarmCenter = buildMergedFarmAtOffset(0, 'solar-farm');
-selectableGroups.push(solarFarmCenter);
-scene.add(solarFarmCenter);
+// Defer heavy solar-farm construction so the page can paint the substation first.
+// requestAnimationFrame schedules for the next paint, ensuring the substation appears immediately.
+requestAnimationFrame(() => {
+  const solarFarmCenter = buildMergedFarmAtOffset(0, 'solar-farm');
+  selectableGroups.push(solarFarmCenter);
+  scene.add(solarFarmCenter);
 
-// Left farm — 100m gap to the west of the center farm
-// Main farm's leftmost unit is at x = -165, so left farm starts at x = -265
-const solarFarmLeft = buildMergedFarmAtOffset(-265, 'solar-farm-west');
-selectableGroups.push(solarFarmLeft);
-scene.add(solarFarmLeft);
+  // Left farm — 100m gap to the west of the center farm
+  // Main farm's leftmost unit is at x = -165, so left farm starts at x = -265
+  const solarFarmLeft = buildMergedFarmAtOffset(-265, 'solar-farm-west');
+  selectableGroups.push(solarFarmLeft);
+  scene.add(solarFarmLeft);
 
-// Right farm — 100m gap to the east of the center farm
-// Main farm's rightmost unit is at x = +165, so right farm starts at x = +265
-const solarFarmRight = buildMergedFarmAtOffset(265, 'solar-farm-east');
-selectableGroups.push(solarFarmRight);
-scene.add(solarFarmRight);
+  // Right farm — 100m gap to the east of the center farm
+  // Main farm's rightmost unit is at x = +165, so right farm starts at x = +265
+  const solarFarmRight = buildMergedFarmAtOffset(265, 'solar-farm-east');
+  selectableGroups.push(solarFarmRight);
+  scene.add(solarFarmRight);
 
-const totalSolarUnits = SOLAR_ROWS * SOLAR_COLS * 3;
-console.log(`[solar-farms] built 3 farms × ${SOLAR_ROWS * SOLAR_COLS} = ${totalSolarUnits} units total (9 draw calls for all solar farms)`);
+  // Hide loading overlay once farms are built
+  const lm = document.getElementById('loading-msg');
+  if (lm) lm.remove();
+
+  const totalSolarUnits = SOLAR_ROWS * SOLAR_COLS * 3;
+  console.log(`[solar-farms] built 3 farms × ${SOLAR_ROWS * SOLAR_COLS} = ${totalSolarUnits} units total (9 draw calls for all solar farms)`);
+  console.log('[solar-farms] built 3 farms async (post-first-paint)');
+});
 
 
 
