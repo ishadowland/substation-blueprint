@@ -1178,8 +1178,9 @@ const solarDemoGroup = (() => {
     }
   }
 
-  // Place the demo group south-east of the substation, away from buildings
-  group.position.set(20, 0, 25);
+  // Place the demo group 200m north of the substation (negative Z), rotated 180° → facing south
+  group.position.set(20, 0, -200);
+  group.rotation.y = Math.PI;
 
   return group;
 })();
