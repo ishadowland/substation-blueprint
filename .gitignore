@@ -1,0 +1,5 @@
+# No build artifacts — single-file static project.
+# Keep this file present so git ignores nothing unintentionally.
+.DS_Store
+Thumbs.db
+*.log

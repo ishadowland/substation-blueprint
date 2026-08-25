@@ -1,0 +1,496 @@
+/* =========================================================================
+   SUBSTATION BLUEPRINT VIEWER — STYLES
+   Mirrors Artemis (redradman/artemis) design tokens:
+     - Pure black background, warm cream foreground
+     - Single amber accent (#e8a23b) for selection / focus
+     - JetBrains Mono + wide letter-spacing (0.12em – 0.35em)
+     - Minimal engineering-drawing HUD chrome
+   Blueprint theme swaps the accent/foreground to cyanotype tones.
+   ========================================================================= */
+
+:root {
+  /* ----- Artemis core tokens (used by Space + Cinematic) ----- */
+  --color-bg: #000000;
+  --color-fg: #f0ebe0;            /* warm cream, NOT pure white */
+  --color-fg-soft: rgba(240, 235, 224, 0.55);
+  --color-fg-faint: rgba(240, 235, 224, 0.22);
+  --color-rule: rgba(240, 235, 224, 0.18);
+
+  --color-accent: #e8a23b;         /* amber — single focus color */
+  --color-accent-dim: rgba(232, 162, 59, 0.55);
+  --color-accent-wash: rgba(232, 162, 59, 0.09);
+  --color-accent-glow: rgba(232, 162, 59, 0.45);
+
+  /* ----- Typography ----- */
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+  --tracking-tight: 0.12em;
+  --tracking-normal: 0.18em;
+  --tracking-wide: 0.32em;
+
+  --text-xs: 10px;
+  --text-sm: 11px;
+  --text-md: 12px;
+  --text-lg: 14px;
+
+  /* ----- Layout ----- */
+  --hud-h: 44px;
+  --pad-x: 22px;
+  --pad-y: 14px;
+
+  /* ----- HUD chrome — top + bottom bars ----- */
+  --hud-bg: rgba(8, 8, 8, 0.72);
+  --hud-bg-solid: #050505;
+  --panel-bg: rgba(8, 8, 8, 0.78);
+}
+
+/* ----- Blueprint theme override (cyanotype) -----
+   Body[data-theme="blueprint"] swaps the foreground + accent to
+   paper-cyan / sky-cyan per the spec. Background stays near-black. */
+body[data-theme='blueprint'] {
+  --color-fg: #dceafe;            /* paper cyan */
+  --color-fg-soft: rgba(220, 234, 254, 0.55);
+  --color-fg-faint: rgba(220, 234, 254, 0.22);
+  --color-rule: rgba(220, 234, 254, 0.18);
+
+  --color-accent: #8fd2ff;         /* sky cyan */
+  --color-accent-dim: rgba(143, 210, 255, 0.55);
+  --color-accent-wash: rgba(143, 210, 255, 0.08);
+  --color-accent-glow: rgba(143, 210, 255, 0.45);
+
+  --color-bg: #02060c;             /* navy-black, slightly bluer */
+}
+
+/* ----- Space / Cinematic share the same palette; only differ in lighting
+   (handled in scene.js). We still override the bg to pure black to make
+   the intent explicit. */
+body[data-theme='space'],
+body[data-theme='cinematic'] {
+  --color-bg: #000000;
+}
+
+/* -----------------------------------------------------------------------
+   Reset
+   ----------------------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  line-height: 1.4;
+  letter-spacing: var(--tracking-normal);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  cursor: default;
+}
+
+body {
+  display: grid;
+  grid-template-rows: var(--hud-h) 1fr var(--hud-h);
+}
+
+/* -----------------------------------------------------------------------
+   STAGE (3D canvas + loading overlay)
+   ----------------------------------------------------------------------- */
+.stage {
+  position: relative;
+  background: var(--color-bg);
+  overflow: hidden;
+}
+
+#canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+}
+
+#canvas:active {
+  cursor: grabbing;
+}
+
+.stage__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  letter-spacing: var(--tracking-wide);
+  transition: opacity 600ms ease-out, visibility 600ms;
+  z-index: 5;
+}
+
+.stage__overlay.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.stage__overlay-inner {
+  text-align: center;
+}
+
+.stage__overlay-mark {
+  font-size: 28px;
+  color: var(--color-accent);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.stage__overlay-text {
+  margin-top: 10px;
+  font-size: var(--text-sm);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* -----------------------------------------------------------------------
+   HUD — top + bottom bars
+   ----------------------------------------------------------------------- */
+.hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--pad-x);
+  height: var(--hud-h);
+  background: var(--hud-bg);
+  border-color: var(--color-rule);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 10;
+  user-select: none;
+  font-size: var(--text-sm);
+}
+
+.hud--top {
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.hud--bottom {
+  border-top: 1px solid var(--color-rule);
+  font-size: var(--text-xs);
+  color: var(--color-fg-soft);
+}
+
+.hud__left,
+.hud__right {
+  display: flex;
+  align-items: baseline;
+  gap: 22px;
+}
+
+.hud__title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-weight: 500;
+}
+
+.hud__title-mark {
+  color: var(--color-accent);
+  font-size: 14px;
+}
+
+.hud__title-text {
+  letter-spacing: var(--tracking-wide);
+  font-size: var(--text-md);
+  color: var(--color-fg);
+}
+
+.hud__title-sep {
+  color: var(--color-fg-faint);
+}
+
+.hud__title-sub {
+  letter-spacing: var(--tracking-wide);
+  color: var(--color-fg-soft);
+  font-size: var(--text-sm);
+}
+
+.hud__caption {
+  font-size: var(--text-xs);
+  color: var(--color-fg-soft);
+  letter-spacing: var(--tracking-tight);
+}
+
+.hud__caption span {
+  color: var(--color-fg);
+}
+
+.hud__label {
+  font-size: var(--text-xs);
+  color: var(--color-fg-soft);
+  letter-spacing: var(--tracking-wide);
+}
+
+.hud__themes {
+  display: flex;
+  gap: 4px;
+}
+
+/* ----- Theme picker buttons ----- */
+.theme-btn {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--color-rule);
+  color: var(--color-fg-soft);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-normal);
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease,
+    background-color 160ms ease;
+}
+
+.theme-btn:hover {
+  color: var(--color-fg);
+  border-color: var(--color-fg-faint);
+}
+
+.theme-btn.is-active {
+  color: var(--color-bg);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.theme-btn:focus-visible {
+  outline: 1px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* ----- Bottom HUD ----- */
+.hud__shortcut {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: var(--tracking-tight);
+}
+
+kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-fg);
+  background: rgba(240, 235, 224, 0.06);
+  border: 1px solid var(--color-rule);
+  border-radius: 2px;
+  letter-spacing: 0.05em;
+}
+
+body[data-theme='blueprint'] kbd {
+  background: rgba(220, 234, 254, 0.06);
+}
+
+.hud__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-xs);
+  color: var(--color-fg-soft);
+  letter-spacing: var(--tracking-tight);
+}
+
+.hud__meta-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  background: var(--color-accent);
+  border-radius: 50%;
+  box-shadow: 0 0 6px var(--color-accent-glow);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+
+/* -----------------------------------------------------------------------
+   PANEL — Component info (top-left under HUD)
+   ----------------------------------------------------------------------- */
+.panel {
+  position: absolute;
+  top: calc(var(--hud-h) + 14px);
+  left: 14px;
+  width: 280px;
+  background: var(--panel-bg);
+  border: 1px solid var(--color-rule);
+  padding: 14px 16px 12px;
+  z-index: 8;
+  font-size: var(--text-sm);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: transform 220ms ease, opacity 220ms ease;
+}
+
+.panel.is-collapsed {
+  transform: translateX(-120%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.panel__row {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 10px;
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--color-rule);
+}
+
+.panel__row:last-of-type {
+  border-bottom: none;
+}
+
+.panel__row--note {
+  margin-top: 6px;
+  display: block;
+}
+
+.panel__row--note .panel__key {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.panel__row--note .panel__val {
+  display: block;
+  color: var(--color-fg-soft);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.6;
+}
+
+.panel__key {
+  color: var(--color-fg-soft);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+}
+
+.panel__val {
+  color: var(--color-fg);
+  letter-spacing: var(--tracking-tight);
+}
+
+.panel__val.is-accent {
+  color: var(--color-accent);
+}
+
+.panel__close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--color-fg-soft);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+.panel__close:hover {
+  color: var(--color-accent);
+}
+
+/* -----------------------------------------------------------------------
+   LEGEND — small, bottom-left
+   ----------------------------------------------------------------------- */
+.legend {
+  position: absolute;
+  bottom: calc(var(--hud-h) + 14px);
+  left: 14px;
+  background: var(--panel-bg);
+  border: 1px solid var(--color-rule);
+  padding: 10px 12px;
+  font-size: var(--text-xs);
+  color: var(--color-fg-soft);
+  letter-spacing: var(--tracking-tight);
+  z-index: 7;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.legend__title {
+  color: var(--color-fg);
+  letter-spacing: var(--tracking-wide);
+  margin-bottom: 6px;
+}
+
+.legend__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.legend__list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend__sw {
+  display: inline-block;
+  width: 18px;
+  height: 2px;
+  background: var(--color-fg);
+  opacity: 0.85;
+}
+
+.legend__sw--active {
+  background: var(--color-accent);
+  opacity: 1;
+  box-shadow: 0 0 4px var(--color-accent-glow);
+}
+
+.legend__sw--dim {
+  opacity: 0.14;
+}
+
+/* -----------------------------------------------------------------------
+   RESPONSIVE
+   ----------------------------------------------------------------------- */
+@media (max-width: 720px) {
+  .hud__caption,
+  .hud__shortcut {
+    display: none;
+  }
+  .panel {
+    width: calc(100% - 28px);
+  }
+  .legend {
+    display: none;
+  }
+}
+
+/* -----------------------------------------------------------------------
+   A11y: respect reduced motion
+   ----------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .hud__meta-dot,
+  .stage__overlay-mark {
+    animation: none;
+  }
+  .stage__overlay {
+    transition: none;
+  }
+}

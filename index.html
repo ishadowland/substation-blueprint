@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SUBSTATION // BLUEPRINT VIEWER</title>
+    <meta
+      name="description"
+      content="Wireframe-style Three.js viewer of an electrical substation. Three themes: Blueprint / Space / Cinematic."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./style.css" />
+
+    <!-- Three.js via CDN, ES modules, no build step -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body data-theme="blueprint">
+    <!-- TOP HUD BAR -->
+    <header class="hud hud--top" aria-label="Project header">
+      <div class="hud__left">
+        <div class="hud__title">
+          <span class="hud__title-mark">▣</span>
+          <span class="hud__title-text">SUBSTATION</span>
+          <span class="hud__title-sep">//</span>
+          <span class="hud__title-sub">BLUEPRINT&nbsp;VIEWER</span>
+        </div>
+        <div class="hud__caption">
+          Drawing&nbsp;No.&nbsp;<span id="draw-no">S-001/A</span>
+          &nbsp;·&nbsp;Sheet&nbsp;<span id="sheet-no">01&nbsp;of&nbsp;01</span>
+          &nbsp;·&nbsp;Scale&nbsp;<span id="scale">1&nbsp;:&nbsp;200</span>
+        </div>
+      </div>
+
+      <div class="hud__right">
+        <span class="hud__label">THEME</span>
+        <div class="hud__themes" role="radiogroup" aria-label="Theme picker">
+          <button
+            type="button"
+            class="theme-btn is-active"
+            data-theme-btn="blueprint"
+            role="radio"
+            aria-checked="true"
+          >
+            01&nbsp;BLUEPRINT
+          </button>
+          <button
+            type="button"
+            class="theme-btn"
+            data-theme-btn="space"
+            role="radio"
+            aria-checked="false"
+          >
+            02&nbsp;SPACE
+          </button>
+          <button
+            type="button"
+            class="theme-btn"
+            data-theme-btn="cinematic"
+            role="radio"
+            aria-checked="false"
+          >
+            03&nbsp;CINEMATIC
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- INTRO / INFO PANEL (collapsible) -->
+    <aside class="panel panel--intro" id="panel" aria-label="Component info">
+      <div class="panel__row">
+        <span class="panel__key">SELECTION</span>
+        <span class="panel__val" id="sel-name">NONE</span>
+      </div>
+      <div class="panel__row">
+        <span class="panel__key">CATEGORY</span>
+        <span class="panel__val" id="sel-cat">—</span>
+      </div>
+      <div class="panel__row">
+        <span class="panel__key">QUANTITY</span>
+        <span class="panel__val" id="sel-qty">—</span>
+      </div>
+      <div class="panel__row panel__row--note">
+        <span class="panel__key">NOTE</span>
+        <span class="panel__val" id="sel-note">
+          Click any component to isolate. Click empty space to clear.
+        </span>
+      </div>
+      <button type="button" class="panel__close" id="panel-close" aria-label="Hide panel">
+        ×
+      </button>
+    </aside>
+
+    <!-- LEGEND (small, bottom-left) -->
+    <div class="legend" aria-label="Legend">
+      <div class="legend__title">LEGEND</div>
+      <ul class="legend__list">
+        <li><span class="legend__sw legend__sw--default"></span>DEFAULT</li>
+        <li><span class="legend__sw legend__sw--active"></span>ACTIVE</li>
+        <li><span class="legend__sw legend__sw--dim"></span>DIMMED</li>
+      </ul>
+    </div>
+
+    <!-- 3D CANVAS -->
+    <main class="stage">
+      <canvas id="canvas" aria-label="3D substation viewer"></canvas>
+      <div class="stage__overlay" id="stage-overlay">
+        <div class="stage__overlay-inner">
+          <div class="stage__overlay-mark">▣</div>
+          <div class="stage__overlay-text">INITIALIZING&nbsp;SCENE</div>
+        </div>
+      </div>
+    </main>
+
+    <!-- BOTTOM HUD BAR -->
+    <footer class="hud hud--bottom" aria-label="Controls">
+      <div class="hud__shortcut">
+        <kbd>DRAG</kbd>&nbsp;ORBIT&nbsp;CAMERA
+      </div>
+      <div class="hud__shortcut">
+        <kbd>SCROLL</kbd>&nbsp;ZOOM
+      </div>
+      <div class="hud__shortcut">
+        <kbd>CLICK</kbd>&nbsp;SELECT&nbsp;COMPONENT
+      </div>
+      <div class="hud__shortcut">
+        <kbd>ESC</kbd>&nbsp;CLEAR&nbsp;SELECTION
+      </div>
+      <div class="hud__shortcut">
+        <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>&nbsp;THEME
+      </div>
+      <div class="hud__meta">
+        <span class="hud__meta-dot"></span>
+        <span id="fps-readout">— FPS</span>
+      </div>
+    </footer>
+
+    <script type="module" src="./scene.js"></script>
+  </body>
+</html>
