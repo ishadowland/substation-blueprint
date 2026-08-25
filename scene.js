@@ -29,7 +29,7 @@ const PALETTES = {
   blueprint: {
     line: 0xdceafe,
     active: 0x8fd2ff,
-    bgCss: '#02060c',
+    bgCss: '#0d2c54',
   },
   // deep space — pure white + amber
   space: {
@@ -183,19 +183,19 @@ const CATALOG = {
     label: 'PHOTOVOLTAIC FARM (CENTRAL)',
     category: 'RENEWABLE SOURCE',
     qty: '792 units · 19,008 panels',
-    note: '66 rows × 12 columns of 24-panel arrays. Centered at x=0, panels facing -Z (toward substation). 330m × 2080m footprint, located ~300m to ~2400m north of the substation.',
+    note: '66 rows × 12 columns of 24-panel arrays. Centered at x=0, panels facing -Z (toward substation). 440m × 2925m footprint, located ~300m to ~3200m north of the substation.',
   },
   'solar-farm-west': {
     label: 'PHOTOVOLTAIC FARM (WEST)',
     category: 'RENEWABLE SOURCE',
     qty: '792 units · 19,008 panels',
-    note: '66 rows × 12 columns, centered at x=-265. Same footprint as central farm (330m × 2080m). 100m gap from central farm. Yaw 0 — faces substation.',
+    note: '66 rows × 12 columns, centered at x=-360. Same footprint as central farm (440m × 2925m). ~127m gap from central farm. Yaw 0 — faces substation.',
   },
   'solar-farm-east': {
     label: 'PHOTOVOLTAIC FARM (EAST)',
     category: 'RENEWABLE SOURCE',
     qty: '792 units · 19,008 panels',
-    note: '66 rows × 12 columns, centered at x=+265. Same footprint as central farm (330m × 2080m). 100m gap from central farm. Yaw 0 — faces substation.',
+    note: '66 rows × 12 columns, centered at x=+360. Same footprint as central farm (440m × 2925m). ~127m gap from central farm. Yaw 0 — faces substation.',
   },
 };
 
@@ -1245,13 +1245,13 @@ const SOLAR_ROWS = 66;
 const SOLAR_COLS = 12;
 const SOLAR_GROUP_W = 25;
 const SOLAR_GROUP_D = 3;
-const SOLAR_COL_STEP = 30;
-const SOLAR_ROW_STEP = 32;
+const SOLAR_COL_STEP = 40;
+const SOLAR_ROW_STEP = 45;
 const SOLAR_ROW0_Z = -300;
-const SOLAR_COL_SPAN = (SOLAR_COLS - 1) * SOLAR_COL_STEP;  // 330m
-const SOLAR_ROW_SPAN = (SOLAR_ROWS - 1) * SOLAR_ROW_STEP;  // 2080m
+const SOLAR_COL_SPAN = (SOLAR_COLS - 1) * SOLAR_COL_STEP;  // 440m
+const SOLAR_ROW_SPAN = (SOLAR_ROWS - 1) * SOLAR_ROW_STEP;  // 2925m
 const SOLAR_FARM_CENTER_X = 0;
-const SOLAR_FARM_CENTER_Z = SOLAR_ROW0_Z - SOLAR_ROW_SPAN / 2;  // -1340m
+const SOLAR_FARM_CENTER_Z = SOLAR_ROW0_Z - SOLAR_ROW_SPAN / 2;  // -1762.5m
 
 const SOLAR_TILT = 0.45; // ~26°
 
@@ -1453,15 +1453,15 @@ requestAnimationFrame(() => {
   selectableGroups.push(solarFarmCenter);
   scene.add(solarFarmCenter);
 
-  // Left farm — 100m gap to the west of the center farm
-  // Main farm's leftmost unit is at x = -165, so left farm starts at x = -265
-  const solarFarmLeft = buildMergedFarmAtOffset(-265, 'solar-farm-west');
+  // Left farm — ~127m gap to the west of the center farm
+  // Center farm's leftmost unit is at x = -220, so left farm starts at x = -360
+  const solarFarmLeft = buildMergedFarmAtOffset(-360, 'solar-farm-west');
   selectableGroups.push(solarFarmLeft);
   scene.add(solarFarmLeft);
 
-  // Right farm — 100m gap to the east of the center farm
-  // Main farm's rightmost unit is at x = +165, so right farm starts at x = +265
-  const solarFarmRight = buildMergedFarmAtOffset(265, 'solar-farm-east');
+  // Right farm — ~127m gap to the east of the center farm
+  // Center farm's rightmost unit is at x = +220, so right farm starts at x = +360
+  const solarFarmRight = buildMergedFarmAtOffset(360, 'solar-farm-east');
   selectableGroups.push(solarFarmRight);
   scene.add(solarFarmRight);
 
@@ -1786,11 +1786,85 @@ document.querySelectorAll('[data-theme-btn]').forEach((btn) => {
   });
 });
 
+/* ---------------------------------------------------------------------- */
+/*  VIEWPOINT CAMERA SYSTEM                                                */
+/* ---------------------------------------------------------------------- */
+
+const VIEWPOINTS = {
+  substation: {
+    cameraPos: new THREE.Vector3(-180, 120, 180),
+    targetPos: new THREE.Vector3(0, 0, 0),
+  },
+  farm: {
+    cameraPos: new THREE.Vector3(0, 800, -1340),
+    targetPos: new THREE.Vector3(0, 0, -1340),
+  },
+  string: {
+    cameraPos: new THREE.Vector3(-30, 50, -1420),
+    targetPos: new THREE.Vector3(0, 2.5, -1340),
+  },
+};
+
+let activeViewpoint = null;
+let flyAnim = null;
+
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+function flyToViewpoint(name) {
+  const cfg = VIEWPOINTS[name];
+  if (!cfg) return;
+
+  if (flyAnim) {
+    cancelAnimationFrame(flyAnim.frameId);
+  }
+
+  const startPos = camera.position.clone();
+  const startTarget = controls.target.clone();
+  const endPos = cfg.cameraPos.clone();
+  const endTarget = cfg.targetPos.clone();
+  const duration = 1200;
+  const startTime = performance.now();
+
+  activeViewpoint = name;
+  document.querySelectorAll('.viewpoint-btn').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.dataset.viewpoint === name);
+  });
+
+  controls.autoRotate = false;
+
+  function step(now) {
+    const elapsed = now - startTime;
+    const raw = Math.min(elapsed / duration, 1);
+    const t = easeInOutCubic(raw);
+
+    camera.position.lerpVectors(startPos, endPos, t);
+    controls.target.lerpVectors(startTarget, endTarget, t);
+
+    if (raw < 1) {
+      flyAnim = { frameId: requestAnimationFrame(step) };
+    } else {
+      flyAnim = null;
+      controls.autoRotate = true;
+    }
+  }
+
+  flyAnim = { frameId: requestAnimationFrame(step) };
+}
+
+document.querySelectorAll('.viewpoint-btn').forEach((btn) => {
+  btn.addEventListener('click', () => flyToViewpoint(btn.dataset.viewpoint));
+});
+
 window.addEventListener('keydown', (event) => {
   if (event.key === '1') applyTheme('blueprint');
   else if (event.key === '2') applyTheme('space');
   else if (event.key === '3') applyTheme('cinematic');
   else if (event.key === 'Escape') applySelection(null);
+  else if (event.key === 's' || event.key === 'S') flyToViewpoint('substation');
+  else if (event.key === 'f' || event.key === 'F') flyToViewpoint('farm');
+  else if (event.key === 'n' || event.key === 'N') flyToViewpoint('string');
 });
 
 /* ---------------------------------------------------------------------- */
