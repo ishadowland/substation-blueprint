@@ -179,10 +179,10 @@ const CATALOG = {
     note: 'Grass + flower beds + deciduous trees surrounding the compound, with a small lake at the top edge.',
   },
   'solar-demo': {
-    label: 'PHOTOVOLTAIC ARRAY (DEMO)',
+    label: 'PHOTOVOLTAIC ARRAY (DEMO ROW)',
     category: 'RENEWABLE SOURCE',
-    qty: '1 unit · 24 panels',
-    note: '12 columns × 2 rows = 24 panels, ~25m wide, tilted ~26°. 4 vertical support posts (front + back rows). Each panel shows a 4-cell × 1-cell silicon grid. Demo placement south-east of the substation.',
+    qty: '12 units · 288 panels',
+    note: '12 units × 12×2 = 288 panels total. Each unit ~25m wide, 5m gap between units. Total row width ~355m. Tilted ~26° with 4 vertical support posts per unit. Placed 200m north of the substation (z=-200), yaw rotated 180° to face south.',
   },
 };
 
@@ -213,17 +213,17 @@ const camera = new THREE.PerspectiveCamera(
   42,
   window.innerWidth / window.innerHeight,
   0.5,
-  2000,
+  2400,
 );
-camera.position.set(-160, 130, 200);
-camera.lookAt(0, 0, 0);
+camera.position.set(0, 180, 50);
+camera.lookAt(0, 0, -200);
 
 const controls = new OrbitControls(camera, canvas);
-controls.target.set(0, 6, 0);
+controls.target.set(0, 0, -200);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.minDistance = 80;
-controls.maxDistance = 420;
+controls.maxDistance = 1500;
 controls.maxPolarAngle = Math.PI * 0.49; // don't go below ground
 controls.autoRotate = true;
 controls.autoRotateSpeed = 0.35;
@@ -1178,12 +1178,40 @@ const solarDemoGroup = (() => {
     }
   }
 
-  // Place the demo group 200m north of the substation (negative Z), rotated 180° → facing south
-  group.position.set(20, 0, -200);
+  // Place the demo group at z = -200 (north), rotated 180°
+  group.position.set(0, 0, -200);
   group.rotation.y = Math.PI;
 
   return group;
 })();
+
+// ─── Replicate to 12 units in a horizontal row at z = -200 ──────────────
+// Each unit is ~25m wide, leave 5m gap between units.
+// 12 units × 25m + 11 × 5m gap = 355m total width
+const GROUP_W = 25;
+const GROUP_GAP = 5;
+const UNITS = 12;
+const ROW_Z = -200;
+const totalWidth = UNITS * GROUP_W + (UNITS - 1) * GROUP_GAP;
+const startX = -totalWidth / 2 + GROUP_W / 2; // center the row
+
+// Keep the original (first instance) at index 0
+const solarRow = [solarDemoGroup];
+for (let i = 1; i < UNITS; i++) {
+  const clone = solarDemoGroup.clone(true);
+  clone.position.set(startX + i * (GROUP_W + GROUP_GAP), 0, ROW_Z);
+  clone.rotation.y = Math.PI;
+  // Tag clone children for selectableId (selection state propagation)
+  clone.traverse((child) => {
+    if (child.isLineSegments) {
+      child.userData.selectableId = 'solar-demo';
+      solarDemoGroup.userData.lines.push(child);
+    }
+  });
+  scene.add(clone);
+  solarRow.push(clone);
+}
+
 selectableGroups.push(solarDemoGroup);
 scene.add(solarDemoGroup);
 
