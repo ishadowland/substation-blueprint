@@ -178,12 +178,6 @@ const CATALOG = {
     qty: '—',
     note: 'Grass + flower beds + deciduous trees surrounding the compound, with a small lake at the top edge.',
   },
-  'solar-farm': {
-    label: 'PHOTOVOLTAIC ARRAY',
-    category: 'RENEWABLE SOURCE',
-    qty: '800 units · 19,200 panels',
-    note: '12×2 panel groups (24 panels each), 24° tilt. Distributed in an outer ring (~540 units at r=200), an inner ring (~200 units at r=90, gap on building side), and a northern belt (~60 units). 12-conductor grid lines visible on each panel face.',
-  },
 };
 
 /* ---------------------------------------------------------------------- */
@@ -213,7 +207,7 @@ const camera = new THREE.PerspectiveCamera(
   42,
   window.innerWidth / window.innerHeight,
   0.5,
-  2400,
+  2000,
 );
 camera.position.set(-160, 130, 200);
 camera.lookAt(0, 0, 0);
@@ -223,7 +217,7 @@ controls.target.set(0, 6, 0);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.minDistance = 80;
-controls.maxDistance = 1200;
+controls.maxDistance = 420;
 controls.maxPolarAngle = Math.PI * 0.49; // don't go below ground
 controls.autoRotate = true;
 controls.autoRotateSpeed = 0.35;
@@ -1078,193 +1072,6 @@ const conductorGroup = (() => {
 })();
 scene.add(conductorGroup);
 selectableGroups.push(conductorGroup);
-
-/* ---------------------------------------------------------------------- */
-/*  SOLAR FARM — 800 groups of 12x2 panels, evenly distributed around the    */
-/*  substation perimeter + concentric outer ring.                          */
-/* ---------------------------------------------------------------------- */
-
-const solarFarmGroup = (() => {
-  const group = new THREE.Group();
-  group.name = 'solar-farm';
-  group.userData.id = 'solar-farm';
-  group.userData.lines = [];
-
-  // ─── Single panel geometry (one solar panel, 4x2 m on the ground plane) ───
-  const PANEL_W = 4.0;     // along the row
-  const PANEL_H = 2.0;     // across the row (two panels stacked = 2)
-  const PANEL_TILT = 0.42; // ~24° tilt — natural slope for photovoltaic
-
-  // Build a panel as a flat box (with thickness so edges are visible)
-  const singlePanelGeom = new THREE.BoxGeometry(PANEL_W, 0.12, PANEL_H);
-
-  // Inner grid lines on the panel face (silicon cell grid) — wireframe accent
-  function panelCellGrid(w, h) {
-    const pts = [];
-    // 4 vertical cell dividers along W
-    for (let i = 1; i < 4; i++) {
-      const x = -w / 2 + (i / 4) * w;
-      pts.push(new THREE.Vector3(x, 0.061, -h / 2));
-      pts.push(new THREE.Vector3(x, 0.061, h / 2));
-    }
-    // 1 horizontal divider across H (12x2 panel = 2 rows of 12 = split into halves)
-    pts.push(new THREE.Vector3(-w / 2, 0.061, 0));
-    pts.push(new THREE.Vector3(w / 2, 0.061, 0));
-    return new THREE.BufferGeometry().setFromPoints(pts);
-  }
-
-  // Group of 24 panels (12 cols × 2 rows) — a single "panel array unit"
-  function buildArrayUnit() {
-    const unit = new THREE.Group();
-    // Two rails along Z (the 12-panel direction)
-    const railGeom = new THREE.BoxGeometry(0.1, 0.05, PANEL_H * 12 + 1);
-    for (const zoff of [-1.2, 1.2]) {
-      const railMesh = new THREE.Mesh(railGeom, materials.hullDark);
-      railMesh.position.set(0, 0.6 + Math.sin(PANEL_TILT) * PANEL_W / 2 * 0 + 0, zoff);
-      unit.add(railMesh);
-      const railEdge = new THREE.LineSegments(
-        new THREE.EdgesGeometry(railGeom),
-        materials.wireDefault
-      );
-      railMesh.add(railEdge);
-      group.userData.lines.push(railEdge);
-    }
-
-    // 12 columns × 2 rows = 24 panels, slight tilt around X axis
-    const tiltPivot = new THREE.Group();
-    tiltPivot.position.y = 0.6;
-    tiltPivot.rotation.x = -PANEL_TILT;
-    unit.add(tiltPivot);
-
-    for (let row = 0; row < 2; row++) {
-      for (let col = 0; col < 12; col++) {
-        const px = (col - 5.5) * (PANEL_W + 0.05);   // along X (row direction)
-        const pz = (row - 0.5) * (PANEL_H + 0.1);     // along Z (column direction)
-
-        const panel = new THREE.Mesh(singlePanelGeom, materials.hullDark);
-        panel.position.set(px, 0.06, pz);
-        tiltPivot.add(panel);
-
-        const panelEdge = new THREE.LineSegments(
-          new THREE.EdgesGeometry(singlePanelGeom),
-          materials.wireDefault
-        );
-        panel.add(panelEdge);
-        group.userData.lines.push(panelEdge);
-
-        // Inner cell grid
-        const cellLines = new THREE.LineSegments(
-          panelCellGrid(PANEL_W, PANEL_H),
-          materials.wireAccent
-        );
-        cellLines.userData.kind = 'wire';
-        panel.add(cellLines);
-        group.userData.lines.push(cellLines);
-      }
-    }
-
-    // Posts (legs) supporting the array
-    for (const col of [0, 6, 11]) {
-      const postGeom = new THREE.BoxGeometry(0.2, 0.7, 0.2);
-      for (const zoff of [-1.2, 1.2]) {
-        const post = new THREE.Mesh(postGeom, materials.hullDark);
-        post.position.set((col - 5.5) * (PANEL_W + 0.05), 0.35, zoff);
-        unit.add(post);
-        const pe = new THREE.LineSegments(
-          new THREE.EdgesGeometry(postGeom),
-          materials.wireDefault
-        );
-        post.add(pe);
-        group.userData.lines.push(pe);
-      }
-    }
-
-    return unit;
-  }
-
-  // ─── Place 800 array units around the compound ───
-  // Strategy: two concentric rings + sub-station-side gaps
-  //   Inner ring: just outside the wall (r ≈ 80), keep gap at building side
-  //   Outer ring: r ≈ 150, full 360°
-  // Each unit footprint: ~5 m wide × 24 m long (12 panels × 2 rows)
-  // Per-ring step: 30 m along arc → inner ring fits ~17 units per side,
-  // outer ring fits ~30 units per side → 800 distributed in two rings.
-
-  const placedPositions = [];
-
-  // Outer ring (full circle)
-  const outerRadius = 200;
-  const outerCount = 540;
-  for (let i = 0; i < outerCount; i++) {
-    const angle = (i / outerCount) * Math.PI * 2;
-    const x = Math.cos(angle) * outerRadius;
-    const z = Math.sin(angle) * outerRadius;
-    placedPositions.push({ x, z, angle });
-  }
-
-  // Inner ring (with gap in front of building, around 0°)
-  const innerRadius = 90;
-  const innerCount = 200;
-  const innerGap = 0.4;  // radians of gap centered at angle=π/2 (south, building side)
-  for (let i = 0; i < innerCount; i++) {
-    // skip gap
-    const t = i / innerCount;
-    const angle = innerGap / 2 + t * (Math.PI * 2 - innerGap);
-    const x = Math.cos(angle) * innerRadius;
-    const z = Math.sin(angle) * innerRadius;
-    // Skip if too close to the building (north side)
-    if (z > 70) continue;
-    placedPositions.push({ x, z, angle });
-  }
-
-  // Skew top: add outer field belt on north side (above building)
-  const northBelt = 60;
-  for (let row = 0; row < 4; row++) {
-    for (let i = 0; i < 15; i++) {
-      const x = -100 + i * 14;
-      const z = -110 - row * 8;
-      placedPositions.push({ x, z, angle: -Math.PI / 2 });
-    }
-  }
-
-  // ─── Build a master "merged" unit to optimize: build once, clone many ───
-  // Because cloned units share geometry, this is GPU-friendly
-  const masterUnit = buildArrayUnit();
-  // Add to scene once to anchor; clone for the rest
-  scene.add(masterUnit);
-
-  for (let i = 0; i < placedPositions.length; i++) {
-    const { x, z, angle } = placedPositions[i];
-    if (i === 0) {
-      // First one is the master
-      masterUnit.position.set(x, 0.05, z);
-      masterUnit.rotation.y = -angle + Math.PI / 2; // align tangent to arc
-    } else {
-      const clone = masterUnit.clone(true);
-      clone.position.set(x, 0.05, z);
-      clone.rotation.y = -angle + Math.PI / 2;
-      scene.add(clone);
-      // Tag every LineSegments in the clone as selectable → solar-farm
-      clone.traverse((child) => {
-        if (child.isLineSegments) {
-          child.userData.selectableId = 'solar-farm';
-          // Also add to solarFarmGroup.userData.lines so theme switch + selection
-          // state propagation works for all 800 units (not just the master)
-          group.userData.lines.push(child);
-        }
-      });
-    }
-  }
-
-  // Adjust treeSpots etc to avoid solar farms (handled separately in landscape)
-
-  return group;
-})();
-// solarFarmGroup exists but we add its lines via the master unit
-// Add to selectable so clicking selects the whole farm
-selectableGroups.push(solarFarmGroup);
-scene.add(solarFarmGroup);
-
 
 /* ---------------------------------------------------------------------- */
 /*  LANDSCAPING — grass, trees, flowers, lake                              */
