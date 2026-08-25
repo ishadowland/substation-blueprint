@@ -18,6 +18,7 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 /* ---------------------------------------------------------------------- */
 /*  PALETTES — mirror the spec                                             */
@@ -1223,38 +1224,46 @@ scene.add(solarDemoGroup);
 
 /* ---------------------------------------------------------------------- */
 /*  SOLAR FARM — 66 rows × 12 units = 792 array units (19,008 panels)       */
-/*  Located north of the substation (z < -300, beyond the lake).           */
-/*  Each unit: 12 cols × 2 rows of 2m × 1m panels, tilted 26°.            */
+/*  Performance: master unit built once + 791 clones share geometry.     */
+/*  Lines merged into 2 BufferGeometries (panels + posts) for 2 draw     */
+/*  calls instead of ~25,000.                                                 */
 /* ---------------------------------------------------------------------- */
 
 const SOLAR_ROWS = 66;
 const SOLAR_COLS = 12;
-const SOLAR_GROUP_W = 25;          // unit width along X
-const SOLAR_GROUP_D = 3;            // unit depth along Z (2 rows × ~1m + gap)
-const SOLAR_COL_STEP = 30;          // center-to-center distance between columns
-const SOLAR_ROW_STEP = 32;          // center-to-center distance between rows
-const SOLAR_ROW0_Z = -300;          // first row (closest to substation)
+const SOLAR_GROUP_W = 25;
+const SOLAR_GROUP_D = 3;
+const SOLAR_COL_STEP = 30;
+const SOLAR_ROW_STEP = 32;
+const SOLAR_ROW0_Z = -300;
 const SOLAR_COL_SPAN = (SOLAR_COLS - 1) * SOLAR_COL_STEP;  // 330m
 const SOLAR_ROW_SPAN = (SOLAR_ROWS - 1) * SOLAR_ROW_STEP;  // 2080m
-const SOLAR_FARM_CENTER_X = 0;       // center the farm under the substation
+const SOLAR_FARM_CENTER_X = 0;
 const SOLAR_FARM_CENTER_Z = SOLAR_ROW0_Z - SOLAR_ROW_SPAN / 2;  // -1340m
+
+const SOLAR_TILT = 0.45; // ~26°
 
 const solarFarmGroup = new THREE.Group();
 solarFarmGroup.name = 'solar-farm';
 solarFarmGroup.userData.id = 'solar-farm';
 solarFarmGroup.userData.lines = [];
 
-// ─── Master geometry (one panel) — shared by all 792 units ────────────────
+// ─── Build per-unit geometries (without instancing first) ──────────────────
 const SOLAR_PANEL_W = 2.0;
 const SOLAR_PANEL_H = 1.0;
 const SOLAR_PANEL_T = 0.08;
-const SOLAR_TILT = 0.45;            // ~26°
+const POST_H = 2.5;
+const POST_INSET_X = 2.5;
 
-const solarPanelGeom = new THREE.BoxGeometry(SOLAR_PANEL_W, SOLAR_PANEL_T, SOLAR_PANEL_H);
-const solarPostGeom = new THREE.BoxGeometry(0.2, 2.5, 0.2);
+const solarPanelEdgeGeom = new THREE.EdgesGeometry(
+  new THREE.BoxGeometry(SOLAR_PANEL_W, SOLAR_PANEL_T, SOLAR_PANEL_H),
+);
+const solarPostEdgeGeom = new THREE.EdgesGeometry(
+  new THREE.BoxGeometry(0.2, POST_H, 0.2),
+);
 
-// Cell grid lines (silicon-cell feel, 4 vertical + 1 horizontal per panel)
-const solarCellPts = (() => {
+// Cell grid (4 vertical + 1 horizontal per panel)
+function buildCellGridGeom() {
   const pts = [];
   for (let i = 1; i <= 3; i++) {
     const x = -SOLAR_PANEL_W / 2 + (i / 4) * SOLAR_PANEL_W;
@@ -1264,105 +1273,133 @@ const solarCellPts = (() => {
   pts.push(new THREE.Vector3(-SOLAR_PANEL_W / 2, SOLAR_PANEL_T / 2 + 0.002, 0));
   pts.push(new THREE.Vector3(SOLAR_PANEL_W / 2, SOLAR_PANEL_T / 2 + 0.002, 0));
   return new THREE.BufferGeometry().setFromPoints(pts);
-})();
-const solarCellGeom = solarCellPts;
+}
+const solarCellGridGeom = buildCellGridGeom();
 
-// ─── Build one unit (group of 24 panels + 4 posts) ────────────────────────
-function buildSolarUnit() {
-  const unit = new THREE.Group();
+// ─── Build a single unit as raw edge geometries (for merging) ─────────────
+// A unit has: 24 panels (with edges + cell grid) + 4 posts
+// Tilt: panels are inside a tilt pivot at y=POST_H, rotated -SOLAR_TILT around X
+function buildUnitGeometries() {
+  const panelGeoms = [];   // outer edges (wireDefault)
+  const cellGeoms = [];    // cell grid (wireAccent)
+  const postGeoms = [];    // posts (wireDefault)
 
-  // 4 posts (front + back row, inset 2.5m from each end)
-  const POST_INSET_X = 2.5;
-  const POST_XS = [-(SOLAR_GROUP_W / 2 - POST_INSET_X), (SOLAR_GROUP_W / 2 - POST_INSET_X)];
-  const POST_ZS = [-(SOLAR_GROUP_D / 2), (SOLAR_GROUP_D / 2)];
-  for (const px of POST_XS) {
-    for (const pz of POST_ZS) {
-      const post = new THREE.Mesh(solarPostGeom, materials.hull);
-      post.position.set(px, 1.25, pz);
-      unit.add(post);
-      const postEdge = new THREE.LineSegments(
-        new THREE.EdgesGeometry(solarPostGeom),
-        materials.wireDefault,
-      );
-      post.add(postEdge);
-      postEdge.userData.selectableId = 'solar-farm';
-      solarFarmGroup.userData.lines.push(postEdge);
-    }
-  }
-
-  // Tilt pivot at top of posts (2.5m)
   const tiltPivot = new THREE.Group();
-  tiltPivot.position.y = 2.5;
+  tiltPivot.position.y = POST_H;
   tiltPivot.rotation.x = -SOLAR_TILT;
-  unit.add(tiltPivot);
 
-  // 12 cols × 2 rows = 24 panels
+  // 24 panels in 12×2 grid
   for (let row = 0; row < 2; row++) {
     for (let col = 0; col < 12; col++) {
       const lx = (col - 5.5) * (SOLAR_PANEL_W + 0.05);
       const lz = (row - 0.5) * (SOLAR_PANEL_H + 0.1);
 
-      const panel = new THREE.Mesh(solarPanelGeom, materials.hullDark);
-      panel.position.set(lx, 0, lz);
-      tiltPivot.add(panel);
+      // Panel outer edges (translate into tilt pivot)
+      const pEdge = solarPanelEdgeGeom.clone();
+      pEdge.translate(lx, 0, lz);
+      panelGeoms.push(pEdge);
 
-      const edge = new THREE.LineSegments(
-        new THREE.EdgesGeometry(solarPanelGeom),
-        materials.wireDefault,
-      );
-      panel.add(edge);
-      edge.userData.selectableId = 'solar-farm';
-      solarFarmGroup.userData.lines.push(edge);
-
-      const cellLines = new THREE.LineSegments(solarCellGeom, materials.wireAccent);
-      panel.add(cellLines);
-      cellLines.userData.selectableId = 'solar-farm';
-      solarFarmGroup.userData.lines.push(cellLines);
+      // Cell grid (translate into tilt pivot)
+      const cEdge = solarCellGridGeom.clone();
+      cEdge.translate(lx, 0, lz);
+      cellGeoms.push(cEdge);
     }
   }
 
-  return unit;
-}
-
-// ─── Build the master unit once ──────────────────────────────────────────
-const masterSolarUnit = buildSolarUnit();
-
-// ─── Clone 792 units in a 66×12 grid ─────────────────────────────────────
-// Loop order: place first unit directly (the master) at row 0 col 0,
-// then clone the rest with proper transforms.
-masterSolarUnit.position.set(
-  SOLAR_FARM_CENTER_X - SOLAR_COL_SPAN / 2,
-  0,
-  SOLAR_FARM_CENTER_Z + SOLAR_ROW_SPAN / 2,
-);
-// Yaw 0 — panels face -Z (toward the substation at z=0)
-masterSolarUnit.rotation.y = 0;
-solarFarmGroup.add(masterSolarUnit);
-
-let solarUnitsPlaced = 1;
-for (let row = 0; row < SOLAR_ROWS; row++) {
-  for (let col = 0; col < SOLAR_COLS; col++) {
-    if (row === 0 && col === 0) continue; // already placed as master
-    const clone = masterSolarUnit.clone(true);
-    const x = SOLAR_FARM_CENTER_X - SOLAR_COL_SPAN / 2 + col * SOLAR_COL_STEP;
-    const z = SOLAR_FARM_CENTER_Z + SOLAR_ROW_SPAN / 2 - row * SOLAR_ROW_STEP;
-    clone.position.set(x, 0, z);
-    clone.rotation.y = 0;
-    solarFarmGroup.add(clone);
-    solarUnitsPlaced++;
-    // Tag cloned lines so selection raycaster picks them
-    clone.traverse((child) => {
-      if (child.isLineSegments) {
-        child.userData.selectableId = 'solar-farm';
-        solarFarmGroup.userData.lines.push(child);
-      }
-    });
+  // 4 posts (no tilt, vertical)
+  const POST_XS = [-(SOLAR_GROUP_W / 2 - POST_INSET_X), (SOLAR_GROUP_W / 2 - POST_INSET_X)];
+  const POST_ZS = [-(SOLAR_GROUP_D / 2), (SOLAR_GROUP_D / 2)];
+  for (const px of POST_XS) {
+    for (const pz of POST_ZS) {
+      const post = solarPostEdgeGeom.clone();
+      post.translate(px, POST_H / 2, pz);
+      postGeoms.push(post);
+    }
   }
+
+  return { panelGeoms, cellGeoms, postGeoms };
 }
-console.log(`[solar-farm] placed ${solarUnitsPlaced} units (${SOLAR_ROWS}×${SOLAR_COLS})`);
+
+// ─── Build all 792 units' geometries in world space ───────────────────────
+// Apply tilt (per-panel), then place in row×col grid with yaw=0
+function buildFarmGeometries() {
+  const allPanelEdges = [];
+  const allCellGrids = [];
+  const allPosts = [];
+
+  // tilt matrix (rotates around X axis, after translating up to POST_H)
+  const tiltMatrix = new THREE.Matrix4()
+    .makeTranslation(0, POST_H, 0)
+    .multiply(new THREE.Matrix4().makeRotationX(-SOLAR_TILT));
+
+  for (let row = 0; row < SOLAR_ROWS; row++) {
+    for (let col = 0; col < SOLAR_COLS; col++) {
+      const ux = SOLAR_FARM_CENTER_X - SOLAR_COL_SPAN / 2 + col * SOLAR_COL_STEP;
+      const uz = SOLAR_FARM_CENTER_Z + SOLAR_ROW_SPAN / 2 - row * SOLAR_ROW_STEP;
+
+      const unit = buildUnitGeometries();
+
+      for (const g of unit.panelGeoms) {
+        g.applyMatrix4(tiltMatrix);
+        g.translate(ux, 0, uz);
+        allPanelEdges.push(g);
+      }
+      for (const g of unit.cellGeoms) {
+        g.applyMatrix4(tiltMatrix);
+        g.translate(ux, 0, uz);
+        allCellGrids.push(g);
+      }
+      for (const g of unit.postGeoms) {
+        g.translate(ux, 0, uz);
+        allPosts.push(g);
+      }
+    }
+  }
+
+  return { allPanelEdges, allCellGrids, allPosts };
+}
+
+// Three.js BufferGeometryUtils is imported at the top of the file.
+
+// Build merged geometries
+const farmGeo = buildFarmGeometries();
+const panelEdgesMerged = mergeGeometries(farmGeo.allPanelEdges);
+const cellGridsMerged = mergeGeometries(farmGeo.allCellGrids);
+const postsMerged = mergeGeometries(farmGeo.allPosts);
+
+// Free the per-unit geometries (no longer needed)
+for (const g of farmGeo.allPanelEdges) g.dispose();
+for (const g of farmGeo.allCellGrids) g.dispose();
+for (const g of farmGeo.allPosts) g.dispose();
+solarPanelEdgeGeom.dispose();
+solarCellGridGeom.dispose();
+solarPostEdgeGeom.dispose();
+
+// ─── Create 3 merged line-segments (3 draw calls for the whole farm) ──────
+const panelEdgesLine = new THREE.LineSegments(panelEdgesMerged, materials.wireDefault);
+panelEdgesLine.userData.kind = 'wire';
+panelEdgesLine.userData.selectableId = 'solar-farm';
+solarFarmGroup.add(panelEdgesLine);
+solarFarmGroup.userData.lines.push(panelEdgesLine);
+
+const cellGridsLine = new THREE.LineSegments(cellGridsMerged, materials.wireAccent);
+cellGridsLine.userData.kind = 'wire';
+cellGridsLine.userData.selectableId = 'solar-farm';
+solarFarmGroup.add(cellGridsLine);
+solarFarmGroup.userData.lines.push(cellGridsLine);
+
+const postsLine = new THREE.LineSegments(postsMerged, materials.wireDefault);
+postsLine.userData.kind = 'wire';
+postsLine.userData.selectableId = 'solar-farm';
+solarFarmGroup.add(postsLine);
+solarFarmGroup.userData.lines.push(postsLine);
+
+console.log('[solar-farm] built 792 units with 3 merged LineSegments (3 draw calls)');
 
 selectableGroups.push(solarFarmGroup);
 scene.add(solarFarmGroup);
+
+
 
 
 /* ---------------------------------------------------------------------- */
