@@ -178,6 +178,12 @@ const CATALOG = {
     qty: '—',
     note: 'Grass + flower beds + deciduous trees surrounding the compound, with a small lake at the top edge.',
   },
+  'solar-demo': {
+    label: 'PHOTOVOLTAIC ARRAY (DEMO)',
+    category: 'RENEWABLE SOURCE',
+    qty: '1 unit · 24 panels',
+    note: '12 columns × 2 rows = 24 panels, ~25m wide, tilted ~26°. 4 vertical support posts (front + back rows). Each panel shows a 4-cell × 1-cell silicon grid. Demo placement south-east of the substation.',
+  },
 };
 
 /* ---------------------------------------------------------------------- */
@@ -1072,6 +1078,114 @@ const conductorGroup = (() => {
 })();
 scene.add(conductorGroup);
 selectableGroups.push(conductorGroup);
+
+/* ---------------------------------------------------------------------- */
+/*  SOLAR ARRAY — single demo unit (12 cols × 2 rows, 4 support posts)     */
+/*  WIP: this is a single instance; we'll multiply to ~800 units after    */
+/*  visual confirmation.                                                  */
+/* ---------------------------------------------------------------------- */
+
+const solarDemoGroup = (() => {
+  const group = new THREE.Group();
+  group.name = 'solar-demo';
+  group.userData.id = 'solar-demo';
+  group.userData.lines = [];
+
+  // ─── Dimensions ────────────────────────────────────────────────────────
+  const PANEL_W = 2.0;     // 横向单块宽
+  const PANEL_H = 1.0;     // 纵向单块深
+  const PANEL_T = 0.08;    // 板厚度
+  const COLS = 12;         // 横向列数
+  const ROWS = 2;          // 纵向排数
+  const PANEL_GAP = 0.05;  // 板与板间隙
+  const GROUP_WIDTH = COLS * PANEL_W + (COLS - 1) * PANEL_GAP;  // 24.55m
+  const GROUP_DEPTH = ROWS * PANEL_H + (ROWS - 1) * PANEL_GAP;  // 2.05m
+  const POST_H = 2.5;      // 支撑柱高
+  const PANEL_TILT = 0.45; // ~26°
+  const POST_INSET_X = 2.5; // 柱从两端各缩进 ~2.5m
+
+  // Panel box geometry (shared by all 24)
+  const panelGeom = new THREE.BoxGeometry(PANEL_W, PANEL_T, PANEL_H);
+
+  // ─── Build panels (24 total in a 12×2 grid) ───────────────────────────
+  // Tilt the whole array around X axis (panels lean back)
+  const tiltPivot = new THREE.Group();
+  tiltPivot.position.y = POST_H; // pivot at top of posts
+  tiltPivot.rotation.x = -PANEL_TILT;
+  group.add(tiltPivot);
+
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      // Local x = horizontal (across columns), z = depth (across rows)
+      const lx = (col - (COLS - 1) / 2) * (PANEL_W + PANEL_GAP);
+      const lz = (row - (ROWS - 1) / 2) * (PANEL_H + PANEL_GAP);
+
+      const panel = new THREE.Mesh(panelGeom, materials.hullDark);
+      panel.position.set(lx, 0, lz);
+      tiltPivot.add(panel);
+
+      const edge = new THREE.LineSegments(
+        new THREE.EdgesGeometry(panelGeom),
+        materials.wireDefault,
+      );
+      panel.add(edge);
+      edge.userData.selectableId = 'solar-demo';
+      group.userData.lines.push(edge);
+
+      // Inner cell grid (3 vertical lines + 1 horizontal, looks like silicon cells)
+      const cellPts = [];
+      for (let i = 1; i <= 3; i++) {
+        const x = -PANEL_W / 2 + (i / 4) * PANEL_W;
+        cellPts.push(new THREE.Vector3(x, PANEL_T / 2 + 0.002, -PANEL_H / 2));
+        cellPts.push(new THREE.Vector3(x, PANEL_T / 2 + 0.002, PANEL_H / 2));
+      }
+      cellPts.push(new THREE.Vector3(-PANEL_W / 2, PANEL_T / 2 + 0.002, 0));
+      cellPts.push(new THREE.Vector3(PANEL_W / 2, PANEL_T / 2 + 0.002, 0));
+      const cellGeo = new THREE.BufferGeometry().setFromPoints(cellPts);
+      const cellLines = new THREE.LineSegments(cellGeo, materials.wireAccent);
+      panel.add(cellLines);
+      cellLines.userData.selectableId = 'solar-demo';
+      group.userData.lines.push(cellLines);
+    }
+  }
+
+  // ─── 4 support posts ────────────────────────────────────────────────────
+  // 2 on front row, 2 on back row. Inset from edges by POST_INSET_X.
+  const postGeom = new THREE.BoxGeometry(0.2, POST_H, 0.2);
+  const postXs = [
+    -(GROUP_WIDTH / 2 - POST_INSET_X),
+     (GROUP_WIDTH / 2 - POST_INSET_X),
+  ];
+  const postZs = [
+    -(GROUP_DEPTH / 2),
+     (GROUP_DEPTH / 2),
+  ];
+
+  for (const px of postXs) {
+    for (const pz of postZs) {
+      const post = new THREE.Mesh(postGeom, materials.hull);
+      // Posts are vertical (no tilt) — anchored in the ground
+      post.position.set(px, POST_H / 2, pz);
+      group.add(post);
+
+      const postEdge = new THREE.LineSegments(
+        new THREE.EdgesGeometry(postGeom),
+        materials.wireDefault,
+      );
+      post.add(postEdge);
+      postEdge.userData.selectableId = 'solar-demo';
+      group.userData.lines.push(postEdge);
+    }
+  }
+
+  // Place the demo group south-east of the substation, away from buildings
+  group.position.set(20, 0, 25);
+
+  return group;
+})();
+selectableGroups.push(solarDemoGroup);
+scene.add(solarDemoGroup);
+
 
 /* ---------------------------------------------------------------------- */
 /*  LANDSCAPING — grass, trees, flowers, lake                              */
