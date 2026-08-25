@@ -178,11 +178,11 @@ const CATALOG = {
     qty: '—',
     note: 'Grass + flower beds + deciduous trees surrounding the compound, with a small lake at the top edge.',
   },
-  'solar-demo': {
-    label: 'PHOTOVOLTAIC ARRAY (DEMO ROW)',
+  'solar-farm': {
+    label: 'PHOTOVOLTAIC FARM',
     category: 'RENEWABLE SOURCE',
-    qty: '12 units · 288 panels',
-    note: '12 units × 12×2 = 288 panels total. Each unit ~25m wide, 5m gap between units. Total row width ~355m. Tilted ~26° with 4 vertical support posts per unit. Placed 200m north of the substation (z=-200), yaw rotated 180° to face south.',
+    qty: '792 units · 19,008 panels',
+    note: '66 rows × 12 columns of 24-panel arrays. Each unit: 12 cols × 2 rows of 2m × 1m panels, 4 support posts, tilted 26°. Total footprint 330m × 2080m, located ~300m to ~2400m north of the substation (well clear of the lake at z=-220). Yaw 0 — all panels face -Z (toward the substation).',
   },
 };
 
@@ -207,23 +207,23 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(PALETTES.blueprint.bgCss);
-scene.fog = new THREE.Fog(PALETTES.blueprint.bgCss, 320, 900);
+scene.fog = new THREE.Fog(PALETTES.blueprint.bgCss, 800, 3000);
 
 const camera = new THREE.PerspectiveCamera(
   42,
   window.innerWidth / window.innerHeight,
   0.5,
-  2400,
+  5000,
 );
-camera.position.set(0, 180, 50);
-camera.lookAt(0, 0, -200);
+camera.position.set(0, 600, 50);
+camera.lookAt(0, 0, -1340);
 
 const controls = new OrbitControls(camera, canvas);
-controls.target.set(0, 0, -200);
+controls.target.set(0, 0, -1340);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.minDistance = 80;
-controls.maxDistance = 1500;
+controls.maxDistance = 3000;
 controls.maxPolarAngle = Math.PI * 0.49; // don't go below ground
 controls.autoRotate = true;
 controls.autoRotateSpeed = 0.35;
@@ -1219,6 +1219,150 @@ for (let i = 1; i < UNITS; i++) {
 
 selectableGroups.push(solarDemoGroup);
 scene.add(solarDemoGroup);
+
+
+/* ---------------------------------------------------------------------- */
+/*  SOLAR FARM — 66 rows × 12 units = 792 array units (19,008 panels)       */
+/*  Located north of the substation (z < -300, beyond the lake).           */
+/*  Each unit: 12 cols × 2 rows of 2m × 1m panels, tilted 26°.            */
+/* ---------------------------------------------------------------------- */
+
+const SOLAR_ROWS = 66;
+const SOLAR_COLS = 12;
+const SOLAR_GROUP_W = 25;          // unit width along X
+const SOLAR_GROUP_D = 3;            // unit depth along Z (2 rows × ~1m + gap)
+const SOLAR_COL_STEP = 30;          // center-to-center distance between columns
+const SOLAR_ROW_STEP = 32;          // center-to-center distance between rows
+const SOLAR_ROW0_Z = -300;          // first row (closest to substation)
+const SOLAR_COL_SPAN = (SOLAR_COLS - 1) * SOLAR_COL_STEP;  // 330m
+const SOLAR_ROW_SPAN = (SOLAR_ROWS - 1) * SOLAR_ROW_STEP;  // 2080m
+const SOLAR_FARM_CENTER_X = 0;       // center the farm under the substation
+const SOLAR_FARM_CENTER_Z = SOLAR_ROW0_Z - SOLAR_ROW_SPAN / 2;  // -1340m
+
+const solarFarmGroup = new THREE.Group();
+solarFarmGroup.name = 'solar-farm';
+solarFarmGroup.userData.id = 'solar-farm';
+solarFarmGroup.userData.lines = [];
+
+// ─── Master geometry (one panel) — shared by all 792 units ────────────────
+const SOLAR_PANEL_W = 2.0;
+const SOLAR_PANEL_H = 1.0;
+const SOLAR_PANEL_T = 0.08;
+const SOLAR_TILT = 0.45;            // ~26°
+
+const solarPanelGeom = new THREE.BoxGeometry(SOLAR_PANEL_W, SOLAR_PANEL_T, SOLAR_PANEL_H);
+const solarPostGeom = new THREE.BoxGeometry(0.2, 2.5, 0.2);
+
+// Cell grid lines (silicon-cell feel, 4 vertical + 1 horizontal per panel)
+const solarCellPts = (() => {
+  const pts = [];
+  for (let i = 1; i <= 3; i++) {
+    const x = -SOLAR_PANEL_W / 2 + (i / 4) * SOLAR_PANEL_W;
+    pts.push(new THREE.Vector3(x, SOLAR_PANEL_T / 2 + 0.002, -SOLAR_PANEL_H / 2));
+    pts.push(new THREE.Vector3(x, SOLAR_PANEL_T / 2 + 0.002, SOLAR_PANEL_H / 2));
+  }
+  pts.push(new THREE.Vector3(-SOLAR_PANEL_W / 2, SOLAR_PANEL_T / 2 + 0.002, 0));
+  pts.push(new THREE.Vector3(SOLAR_PANEL_W / 2, SOLAR_PANEL_T / 2 + 0.002, 0));
+  return new THREE.BufferGeometry().setFromPoints(pts);
+})();
+const solarCellGeom = solarCellPts;
+
+// ─── Build one unit (group of 24 panels + 4 posts) ────────────────────────
+function buildSolarUnit() {
+  const unit = new THREE.Group();
+
+  // 4 posts (front + back row, inset 2.5m from each end)
+  const POST_INSET_X = 2.5;
+  const POST_XS = [-(SOLAR_GROUP_W / 2 - POST_INSET_X), (SOLAR_GROUP_W / 2 - POST_INSET_X)];
+  const POST_ZS = [-(SOLAR_GROUP_D / 2), (SOLAR_GROUP_D / 2)];
+  for (const px of POST_XS) {
+    for (const pz of POST_ZS) {
+      const post = new THREE.Mesh(solarPostGeom, materials.hull);
+      post.position.set(px, 1.25, pz);
+      unit.add(post);
+      const postEdge = new THREE.LineSegments(
+        new THREE.EdgesGeometry(solarPostGeom),
+        materials.wireDefault,
+      );
+      post.add(postEdge);
+      postEdge.userData.selectableId = 'solar-farm';
+      solarFarmGroup.userData.lines.push(postEdge);
+    }
+  }
+
+  // Tilt pivot at top of posts (2.5m)
+  const tiltPivot = new THREE.Group();
+  tiltPivot.position.y = 2.5;
+  tiltPivot.rotation.x = -SOLAR_TILT;
+  unit.add(tiltPivot);
+
+  // 12 cols × 2 rows = 24 panels
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < 12; col++) {
+      const lx = (col - 5.5) * (SOLAR_PANEL_W + 0.05);
+      const lz = (row - 0.5) * (SOLAR_PANEL_H + 0.1);
+
+      const panel = new THREE.Mesh(solarPanelGeom, materials.hullDark);
+      panel.position.set(lx, 0, lz);
+      tiltPivot.add(panel);
+
+      const edge = new THREE.LineSegments(
+        new THREE.EdgesGeometry(solarPanelGeom),
+        materials.wireDefault,
+      );
+      panel.add(edge);
+      edge.userData.selectableId = 'solar-farm';
+      solarFarmGroup.userData.lines.push(edge);
+
+      const cellLines = new THREE.LineSegments(solarCellGeom, materials.wireAccent);
+      panel.add(cellLines);
+      cellLines.userData.selectableId = 'solar-farm';
+      solarFarmGroup.userData.lines.push(cellLines);
+    }
+  }
+
+  return unit;
+}
+
+// ─── Build the master unit once ──────────────────────────────────────────
+const masterSolarUnit = buildSolarUnit();
+
+// ─── Clone 792 units in a 66×12 grid ─────────────────────────────────────
+// Loop order: place first unit directly (the master) at row 0 col 0,
+// then clone the rest with proper transforms.
+masterSolarUnit.position.set(
+  SOLAR_FARM_CENTER_X - SOLAR_COL_SPAN / 2,
+  0,
+  SOLAR_FARM_CENTER_Z + SOLAR_ROW_SPAN / 2,
+);
+// Yaw 0 — panels face -Z (toward the substation at z=0)
+masterSolarUnit.rotation.y = 0;
+solarFarmGroup.add(masterSolarUnit);
+
+let solarUnitsPlaced = 1;
+for (let row = 0; row < SOLAR_ROWS; row++) {
+  for (let col = 0; col < SOLAR_COLS; col++) {
+    if (row === 0 && col === 0) continue; // already placed as master
+    const clone = masterSolarUnit.clone(true);
+    const x = SOLAR_FARM_CENTER_X - SOLAR_COL_SPAN / 2 + col * SOLAR_COL_STEP;
+    const z = SOLAR_FARM_CENTER_Z + SOLAR_ROW_SPAN / 2 - row * SOLAR_ROW_STEP;
+    clone.position.set(x, 0, z);
+    clone.rotation.y = 0;
+    solarFarmGroup.add(clone);
+    solarUnitsPlaced++;
+    // Tag cloned lines so selection raycaster picks them
+    clone.traverse((child) => {
+      if (child.isLineSegments) {
+        child.userData.selectableId = 'solar-farm';
+        solarFarmGroup.userData.lines.push(child);
+      }
+    });
+  }
+}
+console.log(`[solar-farm] placed ${solarUnitsPlaced} units (${SOLAR_ROWS}×${SOLAR_COLS})`);
+
+selectableGroups.push(solarFarmGroup);
+scene.add(solarFarmGroup);
 
 
 /* ---------------------------------------------------------------------- */
