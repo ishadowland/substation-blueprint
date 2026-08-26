@@ -280,6 +280,46 @@ body {
   outline-offset: 2px;
 }
 
+/* ----- DRONE button (4th) — same chassis as theme-btn, amber REC dot ----- */
+.theme-btn--drone {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+  position: relative;
+}
+.theme-btn--drone:hover {
+  color: var(--color-bg);
+  background: var(--color-accent);
+}
+.theme-btn--drone[aria-pressed="true"] {
+  color: var(--color-bg);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 8px var(--color-accent-glow);
+}
+.theme-btn--drone[aria-pressed="true"] .theme-btn__rec {
+  background: var(--color-bg);
+  animation: drone-rec-pulse 0.9s ease-in-out infinite;
+}
+.theme-btn__rec {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  box-shadow: 0 0 4px var(--color-accent-glow);
+  flex: 0 0 auto;
+}
+.theme-btn__label {
+  letter-spacing: inherit;
+}
+@keyframes drone-rec-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.25; transform: scale(0.6); }
+}
+
 /* ----- Viewpoint picker buttons ----- */
 .hud__viewpoints {
   display: flex;
@@ -510,6 +550,11 @@ body[data-theme='blueprint'] kbd {
 
 .legend__sw--dim {
   opacity: 0.14;
+}
+.legend__sw--drone {
+  background: var(--color-accent);
+  opacity: 1;
+  box-shadow: 0 0 4px var(--color-accent-glow);
 }
 
 /* -----------------------------------------------------------------------

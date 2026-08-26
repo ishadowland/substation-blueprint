@@ -197,6 +197,12 @@ const CATALOG = {
     qty: '792 units · 19,008 panels',
     note: '66 rows × 12 columns, centered at x=+360. Same footprint as central farm (440m × 2925m). ~127m gap from central farm. Yaw 0 — faces substation.',
   },
+  drone: {
+    label: 'DRONE FLY-THROUGH',
+    category: 'DEMO',
+    qty: '1',
+    note: 'Cinematic 7-phase camera tour: takeoff → orbit → climb → race north → skim south over solar farm → return → land. Press D or click the DRONE button.',
+  },
 };
 
 /* ---------------------------------------------------------------------- */
@@ -1891,6 +1897,366 @@ function onResize() {
 window.addEventListener('resize', onResize);
 
 /* ---------------------------------------------------------------------- */
+/*  DRONE FLY-THROUGH — 7-phase cinematic camera tour                       */
+/* ----------------------------------------------------------------------
+   The drone block owns the camera while active. It bypasses OrbitControls
+   each frame (camera.position + lookAt) and resumes OrbitControls when
+   finished. A small wireframe quadcopter follows the path so the user can
+   locate the camera in 3D.
+   ---------------------------------------------------------------------- */
+
+/** Drone takeoff point — inside the perimeter wall (NE corner). */
+const DRONE_HOME = { x: 45, y: 3, z: -30 };
+/** Center of the building — camera always looks here during orbit/climb. */
+const DRONE_LOOK_BUILDING = { x: 0, y: 10, z: -22 };
+/** Center of the central solar farm — used during the south-bound skim. */
+const DRONE_FARM_CENTER = { x: 0, y: 0, z: -1340 };
+/** Central farm extent in z (66 rows × ~44m row pitch). */
+const DRONE_FARM_Z_NORTH = -2380;   // far north end of central farm
+const DRONE_FARM_Z_SOUTH = -300;    // near end of central farm (south tip)
+
+/**
+ * Build the wireframe drone marker (quadcopter).
+ * Geometry: central body box + 4 arms (LineSegments) + 4 propeller discs +
+ * 4 corner light spheres. Reuses existing wire materials — no new materials.
+ */
+function buildDroneMarker() {
+  const group = new THREE.Group();
+  group.name = 'drone-marker';
+  group.userData.id = 'drone';
+
+  // Central body — small cube (Mesh) so it reads in Cinematic too.
+  const bodyGeom = new THREE.BoxGeometry(1.4, 0.5, 1.4);
+  const body = new THREE.Mesh(bodyGeom, materials.hullDark);
+  body.position.y = 0;
+  body.castShadow = false;
+  body.userData.kind = 'solid';
+  const bodyEdges = new THREE.EdgesGeometry(bodyGeom);
+  const bodyLines = new THREE.LineSegments(bodyEdges, materials.wireDefault);
+  body.add(bodyLines);
+  group.add(body);
+
+  // 4 arms — diagonal lines from body center to each motor mount.
+  const armLen = 1.4;
+  const armDirs = [
+    { x: +armLen, z: +armLen },
+    { x: -armLen, z: +armLen },
+    { x: -armLen, z: -armLen },
+    { x: +armLen, z: -armLen },
+  ];
+  for (const d of armDirs) {
+    const armGeom = new THREE.BufferGeometry();
+    armGeom.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute(
+        [0, 0, 0, d.x, 0, d.z],
+        3,
+      ),
+    );
+    const arm = new THREE.LineSegments(armGeom, materials.wireDefault);
+    arm.userData.kind = 'wire';
+    group.add(arm);
+  }
+
+  // 4 propellers — thin cylinders (visible as 2 thin rings).
+  const propRadius = 0.55;
+  const propTube = 0.04;
+  for (let i = 0; i < 4; i++) {
+    const d = armDirs[i];
+    const propGeom = new THREE.TorusGeometry(propRadius, propTube, 4, 16);
+    const prop = new THREE.Mesh(propGeom, materials.hull);
+    prop.rotation.x = Math.PI / 2; // lay flat
+    prop.position.set(d.x, 0.15, d.z);
+    prop.userData.kind = 'solid';
+    const propEdges = new THREE.EdgesGeometry(propGeom);
+    const propLines = new THREE.LineSegments(propEdges, materials.wireDefault);
+    prop.add(propLines);
+    group.add(prop);
+    prop.userData.propIndex = i;
+  }
+
+  // 4 corner lights — small spheres. Materials.wireActive so they read as accent.
+  for (let i = 0; i < 4; i++) {
+    const d = armDirs[i];
+    const lightGeom = new THREE.SphereGeometry(0.12, 8, 8);
+    const lightMesh = new THREE.Mesh(lightGeom, materials.wireActive);
+    lightMesh.position.set(d.x * 0.9, 0.05, d.z * 0.9);
+    lightMesh.userData.kind = 'solid';
+    group.add(lightMesh);
+  }
+
+  group.position.set(DRONE_HOME.x, DRONE_HOME.y, DRONE_HOME.z);
+  group.visible = false;
+  return group;
+}
+
+const droneMarker = buildDroneMarker();
+scene.add(droneMarker);
+
+/* --------------------------------------------------------------------------
+   DroneCameraController — owns camera + drone marker while active.
+
+   7 phases (keyframe timeline + arc phase for orbit):
+        1. takeoff       (0   → 2s)   lift vertically from home
+        2. orbit         (2   → 14s)  full CCW arc around (0,30,-22) at r=45
+        3. climb         (14  → 17s)  climb to 80m, drift slightly south
+        4. race north    (17  → 22s)  straight-line to north tip of farm
+        5. skim south    (22  → 32s)  low-altitude fly-back along farm
+        6. return        (32  → 37s)  back to home + climb
+        7. land          (37  → 42s)  vertical descent + small wobble
+   -------------------------------------------------------------------------- */
+
+class DroneCameraController {
+  constructor(camera, orbitControls, droneMesh) {
+    this.camera = camera;
+    this.orbit = orbitControls;
+    this.drone = droneMesh;
+
+    this.isActive = false;
+    this.elapsed = 0;
+    this.totalDuration = 42;
+    this.lastTime = performance.now();
+
+    // Save state so we can restore on end.
+    this.savedCameraPos = new THREE.Vector3();
+    this.savedCameraQuat = new THREE.Quaternion();
+    this.savedTarget = new THREE.Vector3();
+    this.savedAutoRotate = false;
+
+    this._tmpLook = new THREE.Vector3();
+    this._tmpPos = new THREE.Vector3();
+
+    this.onEnd = null; // caller hook to reset HUD button.
+  }
+
+  /** Snapshot OrbitControls state and start the tour. */
+  start() {
+    if (this.isActive) return;
+    this.isActive = true;
+    this.elapsed = 0;
+    this.lastTime = performance.now();
+
+    this.savedCameraPos.copy(this.camera.position);
+    this.savedCameraQuat.copy(this.camera.quaternion);
+    this.savedTarget.copy(this.orbit.target);
+    this.savedAutoRotate = this.orbit.autoRotate;
+
+    this.orbit.enabled = false;
+    this.orbit.autoRotate = false;
+
+    // Snap drone to home, make visible.
+    this.drone.position.set(DRONE_HOME.x, DRONE_HOME.y, DRONE_HOME.z);
+    this.drone.visible = true;
+  }
+
+  /** Abort (e.g. user pressed D during tour) — restore OrbitControls. */
+  cancel() {
+    if (!this.isActive) return;
+    this._end(true);
+  }
+
+  /** Per-frame update — called from the main tick(). */
+  update() {
+    if (!this.isActive) return;
+    const now = performance.now();
+    const dt = (now - this.lastTime) / 1000;
+    this.lastTime = now;
+    this.elapsed += dt;
+
+    const t = this.elapsed;
+    let px, py, pz;
+    let lx, ly, lz;
+
+    // ----- Phase 1: takeoff (0–2s) --------------------------------------
+    if (t < 2) {
+      const k = easeInOutCubic(Math.min(t / 2, 1));
+      px = DRONE_HOME.x;
+      py = DRONE_HOME.y + (30 - DRONE_HOME.y) * k;
+      pz = DRONE_HOME.z;
+      lx = DRONE_LOOK_BUILDING.x;
+      ly = DRONE_LOOK_BUILDING.y;
+      lz = DRONE_LOOK_BUILDING.z;
+    }
+    // ----- Phase 2: orbit (2–14s) --------------------------------------
+    else if (t < 14) {
+      const local = t - 2;
+      const ang = (local / 12) * Math.PI * 2; // full CCW revolution, 12s
+      const r = 45;
+      const cx = 0;
+      const cz = DRONE_LOOK_BUILDING.z; // orbit center z (same as building z)
+      px = cx + r * Math.cos(ang);
+      py = 30;
+      pz = cz + r * Math.sin(ang);
+      lx = DRONE_LOOK_BUILDING.x;
+      ly = DRONE_LOOK_BUILDING.y;
+      lz = DRONE_LOOK_BUILDING.z;
+    }
+    // ----- Phase 3: climb (14–17s) -------------------------------------
+    else if (t < 17) {
+      const k = easeInOutCubic((t - 14) / 3);
+      const startX = 45 * Math.cos(Math.PI * 2); // back to (45,30,-22) at t=14
+      const startZ = DRONE_LOOK_BUILDING.z + 45 * Math.sin(Math.PI * 2);
+      // start = (45, 30, -22) numerically.
+      const sx = 45, sz = DRONE_LOOK_BUILDING.z;
+      px = sx + (0 - sx) * k;
+      py = 30 + (80 - 30) * k;
+      pz = sz + (-200 - sz) * k;
+      lx = DRONE_LOOK_BUILDING.x;
+      ly = DRONE_LOOK_BUILDING.y;
+      lz = DRONE_LOOK_BUILDING.z;
+    }
+    // ----- Phase 4: race north (17–22s) --------------------------------
+    else if (t < 22) {
+      const k = easeInOutCubic((t - 17) / 5);
+      const sx = 0, sy = 80, sz = -200;
+      const ex = 0, ey = 80, ez = DRONE_FARM_Z_NORTH;
+      // Blend lookAt: start looking at building, drift to look ahead-down.
+      const lk = Math.min(1, (t - 17) / 5); // 0 → 1 across the phase
+      px = sx + (ex - sx) * k;
+      py = sy + (ey - sy) * k;
+      pz = sz + (ez - sz) * k;
+      lx = DRONE_LOOK_BUILDING.x + (0 - DRONE_LOOK_BUILDING.x) * lk;
+      ly = DRONE_LOOK_BUILDING.y + (80 - DRONE_LOOK_BUILDING.y) * lk;
+      lz = DRONE_LOOK_BUILDING.z + (-1500 - DRONE_LOOK_BUILDING.z) * lk;
+    }
+    // ----- Phase 5: skim south (22–32s) ---------------------------------
+    else if (t < 32) {
+      const k = easeInOutCubic((t - 22) / 10);
+      const sx = 0, sy = 80, sz = DRONE_FARM_Z_NORTH;
+      const ex = 0, ey = 30, ez = DRONE_FARM_Z_SOUTH;
+      px = sx + (ex - sx) * k;
+      py = sy + (ey - sy) * k;
+      pz = sz + (ez - sz) * k;
+      // Look ahead-down at farm rows.
+      lx = 0;
+      ly = 30;
+      lz = pz + 60; // slight south-ahead bias
+    }
+    // ----- Phase 6: return (32–37s) -------------------------------------
+    else if (t < 37) {
+      const k = easeInOutCubic((t - 32) / 5);
+      const sx = 0, sy = 30, sz = DRONE_FARM_Z_SOUTH;
+      const ex = DRONE_HOME.x, ey = 80, ez = DRONE_HOME.z;
+      px = sx + (ex - sx) * k;
+      py = sy + (ey - sy) * k;
+      pz = sz + (ez - sz) * k;
+      lx = DRONE_HOME.x;
+      ly = 3;
+      lz = DRONE_HOME.z;
+    }
+    // ----- Phase 7: land (37–42s) ---------------------------------------
+    else if (t < 42) {
+      const k = easeInOutCubic((t - 37) / 5);
+      const sx = DRONE_HOME.x, sy = 80, sz = DRONE_HOME.z;
+      const ex = DRONE_HOME.x, ey = DRONE_HOME.y, ez = DRONE_HOME.z;
+      px = sx + (ex - sx) * k;
+      py = sy + (ey - sy) * k;
+      pz = sz + (ez - sz) * k;
+      lx = DRONE_HOME.x;
+      ly = 3;
+      lz = DRONE_HOME.z;
+    }
+    // ----- End ---------------------------------------------------------
+    else {
+      this._end(false);
+      return;
+    }
+
+    // Apply to drone marker (drone sits slightly ahead of camera for chase feel).
+    this.drone.position.set(px, py, pz);
+
+    // Subtle propeller spin animation — spin each prop around its local Y.
+    this.drone.children.forEach((child) => {
+      if (child.userData && typeof child.userData.propIndex === 'number') {
+        child.rotation.z += 0.6;
+      }
+    });
+
+    // Camera chase: offset slightly behind + above the drone along its
+    // forward vector (drone looks at lookAt target).
+    this._tmpLook.set(lx, ly, lz);
+    this._tmpPos.set(px, py, pz);
+
+    const forward = this._tmpLook.clone().sub(this._tmpPos).normalize();
+    // Side-step + above-behind offset for chase feel.
+    const chaseBack = forward.clone().multiplyScalar(-6);
+    const up = new THREE.Vector3(0, 1, 0);
+    const right = up.clone().cross(forward).normalize();
+    this._tmpPos.add(chaseBack);
+    this._tmpPos.add(up.clone().multiplyScalar(2.0));
+    this._tmpPos.add(right.clone().multiplyScalar(0.4));
+
+    this.camera.position.copy(this._tmpPos);
+    this.camera.lookAt(this._tmpLook);
+    // Keep OrbitControls target in sync so its .update() doesn't snap back.
+    this.orbit.target.copy(this._tmpLook);
+  }
+
+  _end(cancelled) {
+    this.isActive = false;
+    this.drone.visible = false;
+
+    // Restore OrbitControls + camera state.
+    this.orbit.enabled = true;
+    this.orbit.autoRotate = this.savedAutoRotate;
+    this.orbit.target.copy(this.savedTarget);
+    this.camera.position.copy(this.savedCameraPos);
+    this.camera.quaternion.copy(this.savedCameraQuat);
+
+    if (typeof this.onEnd === 'function') {
+      this.onEnd(cancelled);
+    }
+  }
+}
+
+const droneController = new DroneCameraController(camera, controls, droneMarker);
+
+/* --------------------------------------------------------------------------
+   DRONE button wiring (HTML click + D-key shortcut) + cancel support.
+   -------------------------------------------------------------------------- */
+
+const droneBtn = document.querySelector('[data-drone-btn]');
+const droneLabel = droneBtn ? droneBtn.querySelector('.theme-btn__label') : null;
+
+function setDroneButtonState(running) {
+  if (!droneBtn) return;
+  droneBtn.setAttribute('aria-pressed', running ? 'true' : 'false');
+  if (droneLabel) {
+    droneLabel.textContent = running ? 'STOP' : '04\u00a0DRONE';
+  }
+}
+
+droneController.onEnd = () => setDroneButtonState(false);
+
+function startDroneTour() {
+  // Cancel any in-flight viewpoint fly first so it doesn't fight us.
+  if (flyAnim) {
+    cancelAnimationFrame(flyAnim.frameId);
+    flyAnim = null;
+  }
+  setDroneButtonState(true);
+  droneController.start();
+}
+
+function toggleDroneTour() {
+  if (droneController.isActive) {
+    droneController.cancel();
+  } else {
+    startDroneTour();
+  }
+}
+
+if (droneBtn) {
+  droneBtn.addEventListener('click', toggleDroneTour);
+}
+
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'd' || event.key === 'D') {
+    toggleDroneTour();
+  }
+});
+
+/* ---------------------------------------------------------------------- */
 /*  RENDER LOOP + AUTO-ROTATE                                              */
 /* ---------------------------------------------------------------------- */
 
@@ -1899,9 +2265,16 @@ const IDLE_BEFORE_AUTOROTATE_MS = 4000;
 const ROTATE_SPEED = 0.35;
 
 function tick() {
+  // Drone controller owns the camera while active — auto-rotate must yield.
+  const droneActive = droneController && droneController.isActive;
+  if (droneActive) {
+    droneController.update();
+  }
+
   // Auto-rotate only after idle period, and not mid-drag.
   const idle = performance.now() - state.lastInteractAt;
-  controls.autoRotate = idle > IDLE_BEFORE_AUTOROTATE_MS && !state.isDragging;
+  controls.autoRotate =
+    !droneActive && idle > IDLE_BEFORE_AUTOROTATE_MS && !state.isDragging;
   controls.autoRotateSpeed = ROTATE_SPEED;
 
   controls.update();

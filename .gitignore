@@ -4,3 +4,6 @@
 Thumbs.db
 *.log
 PERF-TASK.md
+DRONE-TASK.md
+OPC-TASK.md
+.opc/
