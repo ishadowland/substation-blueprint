@@ -149,32 +149,17 @@ substation-blueprint/
 
 ## 5. 蓝图背景设计 (Blueprint Theme 专属)
 
-`.blueprint-paper` 是一个 **绝对定位 + `z-index: 0` + `pointer-events: none`** 的 div,通过 `body[data-theme="blueprint"]` 控制可见性。叠层顺序(由底到顶,后写在上):
+`.blueprint-paper` 是 **绝对定位 + `z-index: 0` + `pointer-events: none`** 的 div,仅 `body[data-theme="blueprint"]` 时显示(`#canvas` 在该主题下 `setClearColor(..., 0)` 让 canvas alpha = 0 → paper div 透过来,见 `d616477`)。7 层 `background-image` 叠合(后写在上):
 
-1. **`background-color: #0b2e55`** — cyanotype navy paper base
-2. **major grid(80px,alpha 0.1125)** — `linear-gradient` 横 + 竖 两层
-3. **minor grid(20px,alpha 0.055)** — `linear-gradient` 横 + 竖 两层
-4. **paper grain** — inline SVG `feTurbulence fractalNoise baseFrequency=0.9 numOctaves=2`,`opacity 0.045`,160×160 平铺
-5. **top-left highlight** — `radial-gradient 22% 18% rgba(210,225,255,0.06)` 营造纸张受光感
-6. **edge vignette** — `radial-gradient ellipse 130% 100% rgba(0,0,0,0.35)` 收暗四角
-
-对应的 `background-size` 配对(7 个 layer,7 个 size):
-
-```
-background-size:    100% 100%,  /* vignette */
-                    100% 100%,  /* highlight */
-                    160px 160px,/* grain */
-                    80px 80px,  /* major H */
-                    80px 80px,  /* major V */
-                    20px 20px,  /* minor H */
-                    20px 20px;  /* minor V */
-background-repeat:  no-repeat, no-repeat, repeat, repeat, repeat, repeat, repeat;
-```
-
-关键修复 commit:
-
-* `d616477` — `renderer.setClearColor(..., 0)` 让 canvas alpha = 0,纸面真正透过来。
-* `017d14d` / `7d8340a` — alpha 0.225 → 0.1125 → 当前 0.1125,让线框主体比网格更突出。
+| # | 层             | 实现                                                |
+| - | ------------- | ------------------------------------------------- |
+| 1 | paper base    | `background-color: #0b2e55` (cyanotype navy)       |
+| 2 | major grid H  | alpha 0.1125, `linear-gradient` 2px 横线 / 80px          |
+| 3 | major grid V  | alpha 0.1125, 2px 竖线 / 80px                          |
+| 4 | minor grid H  | alpha 0.055, 1px 横线 / 20px                           |
+| 5 | minor grid V  | alpha 0.055, 1px 竖线 / 20px                           |
+| 6 | paper grain   | inline SVG `feTurbulence baseFrequency=0.9 numOctaves=2`,`opacity 0.045`,160×160 平铺 |
+| 7 | highlight + vignette | 顶部左侧 `radial-gradient rgba(210,225,255,0.06)` 受光;四角 `rgba(0,0,0,0.35)` 收暗 |
 
 ---
 
@@ -200,61 +185,33 @@ background-repeat:  no-repeat, no-repeat, repeat, repeat, repeat, repeat, repeat
 
 ### 6.2 Solar Farm(3 × 792 unit = 2,376 unit)
 
-**单 unit 结构**(由 commit `5b8bdc6` 起,演化到 `c394762` 的 792 版):
-
-```
-1 unit = 12 cols × 2 rows = 24 panel
-       + 4 post
-       + 24 × (panel edges + 3 cell grid lines)
-```
-
-**整个光伏场尺度**:
-
-```
-per farm: 66 rows × 12 cols = 792 unit = 19,008 panel
-footprint per farm: 440 m (X 横向) × 2,925 m (Z 纵向)
-3 farms:  -360 (西)  ── 0 (中)  ── +360 (东),farm 间 ~127m gap
-朝向: yaw = 0,面板面向 -Z(朝 substation)
-```
-
-**面板参数**:
-
-* 单板 2.0m × 1.0m × 0.08m(玻璃厚度)
-* cell grid:**2 条竖线 + 1 条横线**(每块板共 5 段 line),从早期 4 条竖线减半以省 vertex(`c394762` / `bd192cf`)
-* 倾角 ≈ 26°,`PANEL_TILT = 0.45` rad
-* 支撑柱 0.2×0.2×2.5m,4 根 / unit
-
-**panel 数总计**:
-
-```
-3 farms × 66 rows × 12 cols × 24 panel/unit = 57,024 panels
-```
+| 维度               | 值                                                                |
+| ---------------- | ---------------------------------------------------------------- |
+| 单 unit           | 12 cols × 2 rows = 24 panel + 4 post;cell grid = **2 竖线 + 1 横线**(早期 4 竖线减半以省 vertex) |
+| 单板尺寸             | 2.0m × 1.0m × 0.08m;倾角 ≈ 26°(`PANEL_TILT = 0.45` rad)             |
+| 单场                | 66 rows × 12 cols = **792 unit / 19,008 panel**;440m(X)× 2,925m(Z) footprint |
+| 3 场布局            | 西 x=-360 / 中 x=0 / 东 x=+360,场间 ~127m gap;yaw=0,面板面向 -Z(朝 substation) |
+| 全部               | **2,376 unit / 57,024 panel**(3 × 66 × 12 × 24)                       |
 
 ### 6.3 Performance: 25,000 LineSegments → 9
 
-历史痛点:最早期每个 panel 是独立 LineSegments,792 unit × 3 farms ≈ **25,000 draw call**(commit `1e8623a` → `1832753` Revert → `c394762` 重做)。
+历史痛点:早期每个 panel 独立 LineSegments,792 unit ≈ **~25,000 draw call**(`1e8623a` → `1832753` Revert → `c394762` 重做)。
 
-最终方案(`bd192cf` `perf: merge 792 solar units into 3 LineSegments (was 25,000)`):
+最终方案(`bd192cf`):
 
 ```js
 function buildMergedFarmAtOffset(xOffset, groupId) {
-  // 累积所有 panel edges / cell grids / posts 的 BufferGeometry
+  // 累积 panel edges / cell grids / posts 的 BufferGeometry
   // ……
-  const panelEdgesMerged = mergeGeometries(allPanelEdges);  // THREE.BufferGeometryUtils
+  const panelEdgesMerged = mergeGeometries(allPanelEdges);   // BufferGeometryUtils
   const cellGridsMerged  = mergeGeometries(allCellGrids);
   const postsMerged      = mergeGeometries(allPosts);
   // 每 farm 输出 3 个 LineSegments,3 farm = 9 draw calls
 }
-
-const wireAccent = new THREE.LineBasicMaterial({ color: accent, transparent: true, opacity: 0.55 });
-// cell grid 使用 wireAccent(在 blueprint 主题下呈 sky cyan,space/cinematic 下呈 amber)
+// cell grid 使用 wireAccent(opacity 0.55),在 blueprint → sky cyan,space/cinematic → amber
 ```
 
-启动流程(`f557c52`):
-
-* `boot()` 同步执行 `applyTheme('blueprint')` + `applySelection(null)` + `tick()`(rAF)。
-* `tick()` 首帧让 substation 先 paint(11 类组件 + 共享 materials)。
-* `requestAnimationFrame(() => buildMergedFarmAtOffset × 3)` 把光伏场推迟到下一帧,**首屏只渲染 substation**,避免 2 秒以上白屏。
+启动流程(`f557c52`):`boot()` 同步执行 `applyTheme + applySelection + tick()`(rAF);`requestAnimationFrame(() => buildMergedFarmAtOffset × 3)` 把 3 场推迟到下一帧,**首屏只渲染 substation**,首屏白屏从 ~2s 降到 < 200ms。
 
 ---
 
@@ -262,79 +219,39 @@ const wireAccent = new THREE.LineBasicMaterial({ color: accent, transparent: tru
 
 ### 7.1 OrbitControls + Auto-Rotate
 
-```
-controls.enableDamping    = true
-controls.dampingFactor    = 0.08
-controls.minDistance      = 80
-controls.maxDistance      = 3000
-controls.maxPolarAngle    = π × 0.49   // 防止穿地
-controls.autoRotate       = true (default)
-controls.autoRotateSpeed  = 0.35      // ROTATE_SPEED
+```js
+controls.enableDamping   = true
+controls.dampingFactor   = 0.08
+controls.minDistance     = 80;   controls.maxDistance = 3000
+controls.maxPolarAngle   = π × 0.49   // 防止穿地
+controls.autoRotateSpeed = 0.35
 ```
 
-**Auto-rotate gate**(在 `tick()` 中):
-
-```
-autoRotate = !droneActive && idle > 4000ms && !state.isDragging
-```
-
-`state.lastInteractAt` 在 `pointerdown` / `pointermove` / `pointerup` 三个事件中刷新;用户拖动时 `state.isDragging = true`(阈值 4 像素)。
+`tick()` 内 auto-rotate gate:`autoRotate = !droneActive && idle > 4000ms && !state.isDragging`。`state.lastInteractAt` 在 pointerdown / move / up 中刷新,4 px 阈值判 drag。
 
 ### 7.2 Click-to-Select(3-tone state)
 
-每个 `LineSegments` 在 `userData.kind` 上有 3 种角色:`'wire'`(主体线框)/ `'solid'`(Cinematic 实体 hull)/ `'ambient'`(始终 dim,如 perimeter 外圈 ring)。
+每个 `LineSegments` 在 `userData.kind` 有 3 种角色:`'wire'` / `'solid'` / `'ambient'`(始终 dim)。
 
-```js
-applySelection(id):
-  for each selectableGroup g:
-    for each line in g.userData.lines:
-      if line.kind === 'ambient' → materials.wireDim (opacity 0.14)
-      else if id === null              → materials.wireDefault (opacity 0.85)
-      else if g.userData.id === id     → materials.wireActive  (opacity 1.00, accent color)
-      else                             → materials.wireDim     (opacity 0.14)
-```
+| line.kind | id=null | id=match | id=other |
+| --- | --- | --- | --- |
+| `wire`   | wireDefault(opacity 0.85) | **wireActive**(1.00, accent) | wireDim(0.14) |
+| `solid`  | (隐于 wire 之下)             | 同左                        | 同左          |
+| `ambient`| wireDim(0.14)               | wireDim(0.14)               | wireDim(0.14) |
 
-`raycaster.intersectObjects(candidates)` 仅命中 kind=wire 的 line;移动超过 4 px 视为 drag,松开时不触发 select。
+`raycaster.intersectObjects(candidates)` 仅命中 kind=wire;移动 > 4 px 视为 drag。
 
-### 7.3 3 视角按钮
+### 7.3 3 视角按钮 + DRONE + LOOP
 
-```
-SUBSTATION (S) ─── flyToViewpoint('substation')
-                        camera (-360,240,360), target (0,0,0)         // commit 19f199f doubled
-SOLAR FARM (F)  ─ flyToViewpoint('farm')
-                        camera (0,800,-1340), target (0,0,-1340)
-STRING     (N)  ─ flyToViewpoint('string')
-                        camera (-30,50,-1420), target (0,2.5,-1340)
-```
+| 控件       | 行为                                                                                |
+| -------- | --------------------------------------------------------------------------------- |
+| `S` SUBSTATION | `flyToViewpoint('substation')` → camera (-360,240,360), target (0,0,0)(`19f199f` 加倍) |
+| `F` SOLAR FARM | `flyToViewpoint('farm')` → camera (0,800,-1340), target (0,0,-1340)              |
+| `N` STRING    | `flyToViewpoint('string')` → camera (-30,50,-1420), target (0,2.5,-1340)         |
+| `D` DRONE / 04 DRONE | `toggleDroneTour()`:`isActive ? cancel() : startDroneTour()`(`f3bd22e` + `c4945ff`) |
+| `L` LOOP / LOOP | 独立 arm toggle;`droneController.onEnd` 返回 `'loop'` → `start()` 重启(`640ccf7`)         |
 
-实现:1.2s `easeInOutCubic` lerp `camera.position` + `controls.target`,用 `requestAnimationFrame` 推进,中途可被新指令取消。
-
-引用 commit:
-
-* `f3bd22e` — 引入 SUBSTATION / SOLAR FARM / STRING 三视角按钮 + 修 solar spacing。
-* `19f199f` — SUBSTATION 视角相机距离加倍(更广)。
-
-### 7.4 DRONE 按钮 + 取消
-
-* 按钮 `04 DRONE`(右上角,带 REC 灯动画)。
-* 点击 → `toggleDroneTour()`:
-  * `droneController.isActive` ? `cancel()` : `startDroneTour()`(取消任何进行中的 flyToViewpoint 避免抢相机)
-* 键盘 `D` 等价。
-* 按钮文案:`04 DRONE` ⇄ `STOP`,`aria-pressed` 同步。
-
-### 7.5 LOOP 按钮(独立 arm toggle)
-
-* 虚线边框表示 "armed but not running"。
-* 键盘 `L` 切换 armed 状态(等价 click)。
-* `droneController.onEnd` 返回 `'loop'` 让控制器 `start()` 重启(commit `640ccf7` 引入):
-  ```js
-  droneController.onEnd = () => {
-    setDroneButtonState(false);
-    return window.__droneLoopArmed ? 'loop' : undefined;
-  };
-  ```
-* armed 但 tour 跑完后立刻 restart;tour 中 disarm 是 no-op,直到下次自然结束。
-* Disarm / arm 顺序不敏感,可以 "先 L 再 D"。
+视角 fly 用 1.2s `easeInOutCubic` lerp camera.position + controls.target;DRONE 期间 `controls.enabled = false`,camera 完全由 `DroneCameraController` 接管。
 
 ---
 
@@ -344,23 +261,18 @@ STRING     (N)  ─ flyToViewpoint('string')
 
 | #   | 阶段        | 时长(s) | 起 → 终                                                              | lookAt 起点 → 终点 |
 | --- | --------- | ------ | -------------------------------------------------------------------- | ----------- |
-| 1   | takeoff   | 0→2    | (45, 3, -30) → (45, 30, -30)                                         | 固定在 building (0,10,-22) |
-| 2   | orbit     | 2→14   | 圆周 r=110m, y=60, 12s 1 圈 CCW(center = DRONE_HOME)                   | 固定 DRONE_HOME |
-| 3   | climb     | 14→17  | (45,30,-22) → (0,80,-200)                                            | **lerp** DRONE_HOME → building(平滑过渡,不再 snap) |
+| 1   | takeoff   | 0→2    | (45, 3, -30) → (45, 30, -30)                                         | 固定 building (0,10,-22) |
+| 2   | orbit     | 2→14   | r=110m, y=60, 12s 1 圈 CCW(center = DRONE_HOME)                      | 固定 DRONE_HOME |
+| 3   | climb     | 14→17  | (45,30,-22) → (0,80,-200)                                            | **lerp** DRONE_HOME → building |
 | 4   | race north | 17→22 | (0,80,-200) → (0,80,-2380)                                            | lerp building → (0,80,-1500) |
-| 5   | skim south | 22→47 | (0,80,-2380) → (0,45,-300) — **25s 长镜头**(40% 速度)               | ly lerp 80→45,lz = pz+60 |
-| 6   | return    | 47→52  | skim 终 → DRONE_HOME                                                  | 固定 DRONE_HOME |
+| 5   | skim south | 22→47 | (0,80,-2380) → (0,45,-300) — 25s 长镜头(40% 速度)                   | ly lerp 80→45 |
 | 7   | land      | 52→57  | (45,80,-30) → (45,3,-30)                                              | 固定 DRONE_HOME,y=3 |
 
 总时长 62s,`easeInOutCubic` 用于每个子阶段的进度归一化。
 
 **chase camera offset**: camera 不是直接放在 drone 位置,而是 `position + (-forward)×6 + up×2.0 + right×0.4`,产生"跟在后面略高略偏"的三维运镜感。`OrbitControls.target` 也被同步 copy,避免 `controls.update()` snap-back。
 
-**drone marker 同步**:
-
-* `group.position.set(px, py, pz)` — 每帧跟随 keyframe。
-* 4 个 propeller 每帧 `rotation.z += 0.6` 自旋。
-* 4 个 corner light 使用 `materials.wireActive`,在 3 主题下分别呈 sky-cyan / amber / amber,自然成为视觉焦点。
+**drone marker 同步**:`group.position` 每帧跟随 keyframe;4 个 propeller 每帧 `rotation.z += 0.6` 自旋;4 个 corner light 使用 `materials.wireActive`,在 3 主题下分别呈 sky-cyan / amber / amber。
 
 引用 commit:
 
