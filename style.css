@@ -713,9 +713,10 @@ body[data-theme='blueprint'] kbd {
   .theme-btn {
     padding: 5px 6px;
   }
-  .theme-btn--loop {
-    display: none; /* hide LOOP on tiny screens — too cramped */
-  }
+  /* Note: we deliberately do NOT hide .theme-btn--loop here. Users want
+     the LOOP button even on tiny portrait phones; the .hud__themes row
+     has flex-wrap: wrap so it'll wrap to a 3rd line on narrow screens
+     instead of being hidden. */
 }
 
 /* -----------------------------------------------------------------------
