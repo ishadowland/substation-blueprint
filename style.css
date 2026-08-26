@@ -116,6 +116,10 @@ body {
   display: block;
   cursor: grab;
   z-index: 1;
+  /* Prevent native touch panning / zooming on the canvas so OrbitControls
+     owns the gesture. Without this, mobile browsers try to scroll/zoom
+     the page when the user drags the canvas. */
+  touch-action: none;
 }
 
 #canvas:active {
@@ -598,7 +602,10 @@ body[data-theme='blueprint'] kbd {
 }
 
 /* -----------------------------------------------------------------------
-   RESPONSIVE
+   RESPONSIVE — mobile portrait / tablet portrait
+   Two breakpoints:
+   - max-width: 480px (small phones, iPhone SE / 12 mini)
+   - max-width: 768px and portrait (most phones, portrait tablets)
    ----------------------------------------------------------------------- */
 @media (max-width: 720px) {
   .hud__caption,
@@ -610,6 +617,102 @@ body[data-theme='blueprint'] kbd {
   }
   .legend {
     display: none;
+  }
+}
+
+/* Portrait phones: collapse HUD chrome, switch theme buttons to icons,
+   move the info panel to a bottom sheet, drop the legend entirely. */
+@media (max-width: 768px) and (orientation: portrait) {
+  .hud {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  .hud__title-sub {
+    display: none;
+  }
+  .hud__commit {
+    display: none;
+  }
+  .hud__themes {
+    gap: 4px;
+  }
+  .theme-btn {
+    padding: 6px 8px;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+  }
+  .theme-btn--drone .theme-btn__label,
+  .theme-btn--loop .theme-btn__label {
+    font-size: 10px;
+  }
+  .theme-btn__label {
+    font-size: 10px;
+    letter-spacing: 0.05em;
+  }
+  .theme-btn__rec {
+    width: 5px;
+    height: 5px;
+  }
+  /* Bottom-anchored info panel (sheet style) instead of top-right card */
+  .panel {
+    top: auto;
+    right: 12px;
+    left: 12px;
+    bottom: 12px;
+    width: auto;
+    max-height: 40vh;
+    overflow-y: auto;
+  }
+  .panel h2 {
+    font-size: 14px;
+  }
+  /* Bottom shortcuts: 2x2 grid via flex-wrap */
+  .hud__shortcuts {
+    flex-wrap: wrap;
+    gap: 8px 12px !important;
+    bottom: 12px;
+    left: 12px;
+  }
+  .hud__shortcut {
+    font-size: 9px;
+  }
+  .hud__shortcut span {
+    padding: 1px 5px;
+    margin-right: 4px;
+  }
+  /* Legend hidden on portrait — too cramped */
+  .legend {
+    display: none;
+  }
+  /* Viewpoint button labels: hide shortcut hint, keep button compact */
+  .viewpoint-btn {
+    padding: 6px 10px;
+    font-size: 10px;
+  }
+  .viewpoint-btn kbd {
+    display: none;
+  }
+  /* Bottom control bar: scrollable horizontally if needed */
+  .hud--bottom {
+    flex-wrap: wrap;
+    padding: 10px 12px;
+    gap: 8px;
+  }
+}
+
+/* Very narrow phones: further tighten spacing */
+@media (max-width: 480px) {
+  .hud__left {
+    gap: 2px;
+  }
+  .hud__title-text {
+    font-size: 14px;
+  }
+  .theme-btn {
+    padding: 5px 6px;
+  }
+  .theme-btn--loop {
+    display: none; /* hide LOOP on tiny screens — too cramped */
   }
 }
 

@@ -212,13 +212,23 @@ const CATALOG = {
 const canvas = document.getElementById('canvas');
 const overlay = document.getElementById('stage-overlay');
 
+// ─── Portrait detection — drives mobile-specific camera + perf knobs ───────
+// Portrait phones need a wider FOV and a closer camera so the scene reads
+// at small viewport sizes. Performance also gets capped to keep frame
+// times under control on weaker mobile GPUs.
+function isPortrait() {
+  return window.innerHeight > window.innerWidth && window.innerWidth < 768;
+}
+const PORTRAIT_FOV = 50;
+const DESKTOP_FOV = 42;
+
 const renderer = new THREE.WebGLRenderer({
   canvas,
   antialias: true,
   alpha: true,
   powerPreference: 'high-performance',
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, isPortrait() ? 1 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight, false);
 // In blueprint mode the paper div is the backdrop, so the canvas clears
 // transparent. The applyTheme() handler keeps this in sync.
@@ -231,16 +241,24 @@ scene.background = new THREE.Color(PALETTES.blueprint.bgCss);
 scene.fog = new THREE.Fog(PALETTES.blueprint.bgCss, 1200, 4500);
 
 const camera = new THREE.PerspectiveCamera(
-  42,
+  isPortrait() ? PORTRAIT_FOV : DESKTOP_FOV,
   window.innerWidth / window.innerHeight,
   0.5,
   5000,
 );
-camera.position.set(0, 700, 200);
-camera.lookAt(0, 0, -1340);
+// Portrait phones: pull the camera closer (50% of default distance) so the
+// substation reads at small viewport sizes. Default desktop framing keeps
+// the wider scene composition for solar farm context.
+if (isPortrait()) {
+  camera.position.set(0, 350, 100);
+  camera.lookAt(0, 0, -200);
+} else {
+  camera.position.set(0, 700, 200);
+  camera.lookAt(0, 0, -1340);
+}
 
 const controls = new OrbitControls(camera, canvas);
-controls.target.set(0, 0, -1340);
+controls.target.set(0, isPortrait() ? 0 : -1340);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.minDistance = 80;
@@ -1905,7 +1923,11 @@ function onResize() {
   const w = window.innerWidth;
   const h = window.innerHeight;
   camera.aspect = w / h;
+  // Adjust FOV dynamically if the user rotates from landscape to portrait.
+  camera.fov = isPortrait() ? PORTRAIT_FOV : DESKTOP_FOV;
   camera.updateProjectionMatrix();
+  // Re-cap pixel ratio on rotate (e.g. iPad goes from 2 to 1 on portrait).
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, isPortrait() ? 1 : 2));
   renderer.setSize(w, h, false);
 }
 window.addEventListener('resize', onResize);
