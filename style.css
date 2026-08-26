@@ -324,6 +324,25 @@ body {
   background: var(--color-bg);
   animation: drone-rec-pulse 0.9s ease-in-out infinite;
 }
+
+/* LOOP button — independent arm toggle for drone fly-through. When
+   armed, the demo restarts immediately after the end of each loop. */
+.theme-btn--loop {
+  letter-spacing: 0.18em;
+  border-style: dashed;
+}
+.theme-btn--loop[aria-pressed="true"] {
+  color: var(--color-bg);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  border-style: solid;
+  box-shadow: 0 0 8px var(--color-accent-glow);
+}
+.theme-btn--loop[aria-pressed="true"] .theme-btn__label::before {
+  content: '⟳ ';
+  display: inline-block;
+  margin-right: 2px;
+}
 .theme-btn__rec {
   display: inline-block;
   width: 6px;

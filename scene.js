@@ -2061,6 +2061,12 @@ class DroneCameraController {
     // Snap drone to home, make visible.
     this.drone.position.set(DRONE_HOME.x, DRONE_HOME.y, DRONE_HOME.z);
     this.drone.visible = true;
+
+    // Notify HUD that a tour is now active (covers the loop-restart case
+    // where _end → start() happens without going through the click handler).
+    if (typeof this.onStart === 'function') {
+      this.onStart();
+    }
   }
 
   /** Abort (e.g. user pressed D during tour) — restore OrbitControls. */
@@ -2116,9 +2122,11 @@ class DroneCameraController {
       px = sx + (0 - sx) * k;
       py = 30 + (80 - 30) * k;
       pz = sz + (-200 - sz) * k;
-      lx = DRONE_LOOK_BUILDING.x;
-      ly = DRONE_LOOK_BUILDING.y;
-      lz = DRONE_LOOK_BUILDING.z;
+      // SMOOTH: lookAt lerps from orbit-end (takeoff point) toward
+      // climb-end (building) instead of snapping at the phase boundary.
+      lx = DRONE_HOME.x + (DRONE_LOOK_BUILDING.x - DRONE_HOME.x) * k;
+      ly = DRONE_HOME.y + (DRONE_LOOK_BUILDING.y - DRONE_HOME.y) * k;
+      lz = DRONE_HOME.z + (DRONE_LOOK_BUILDING.z - DRONE_HOME.z) * k;
     }
     // ----- Phase 4: race north (17–22s) --------------------------------
     else if (t < 22) {
@@ -2136,15 +2144,16 @@ class DroneCameraController {
     }
     // ----- Phase 5: skim south (22–47s) ---------------------------------
     else if (t < 47) {
-      const k = easeInOutCubic((t - 22) / 25);  // 25s duration (speed 40% of prior 10s)
+      const k = easeInOutCubic((t - 22) / 25);  // 25s duration (speed 40%)
       const sx = 0, sy = 80, sz = DRONE_FARM_Z_NORTH;
-      const ex = 0, ey = 45, ez = DRONE_FARM_Z_SOUTH;  // skim altitude 45 (was 30)
+      const ex = 0, ey = 45, ez = DRONE_FARM_Z_SOUTH;  // skim altitude 45
       px = sx + (ex - sx) * k;
       py = sy + (ey - sy) * k;
       pz = sz + (ez - sz) * k;
-      // Look ahead-down at farm rows.
+      // SMOOTH: lookAt ly lerps from race-north-end (80) down to skim
+      // altitude (45). lx stays at 0, lz rides pz+60 (already smooth).
       lx = 0;
-      ly = 45;                                  // look height matches skim altitude
+      ly = 80 + (45 - 80) * k;
       lz = pz + 60; // slight south-ahead bias
     }
     // ----- Phase 6: return (47–52s) -------------------------------------
@@ -2155,9 +2164,12 @@ class DroneCameraController {
       px = sx + (ex - sx) * k;
       py = sy + (ey - sy) * k;
       pz = sz + (ez - sz) * k;
-      lx = DRONE_HOME.x;
-      ly = 3;
-      lz = DRONE_HOME.z;
+      // SMOOTH: lookAt lerps from skim-end "ahead-down (0, 45, pz+60)"
+      // toward takeoff point (45, 3, -30) so the camera sweeps cleanly
+      // back to home instead of snapping.
+      lx = 0 + (DRONE_HOME.x - 0) * k;
+      ly = 45 + (3 - 45) * k;
+      lz = (DRONE_FARM_Z_SOUTH + 60) + (DRONE_HOME.z - (DRONE_FARM_Z_SOUTH + 60)) * k;
     }
     // ----- Phase 7: land (52–57s) ---------------------------------------
     else if (t < 57) {
@@ -2219,7 +2231,15 @@ class DroneCameraController {
     this.camera.quaternion.copy(this.savedCameraQuat);
 
     if (typeof this.onEnd === 'function') {
-      this.onEnd(cancelled);
+      const result = this.onEnd(cancelled);
+      // onEnd can return the string 'loop' to ask the controller to
+      // restart from the beginning without restoring the camera first.
+      if (result === 'loop' && !cancelled) {
+        // Reset elapsed and start again. Drone snaps back to home via
+        // the normal start() path (visible flicker of ~1 frame, which
+        // matches the typical "loop" seam on YouTube clips etc).
+        this.start();
+      }
     }
   }
 }
@@ -2241,7 +2261,32 @@ function setDroneButtonState(running) {
   }
 }
 
-droneController.onEnd = () => setDroneButtonState(false);
+droneController.onEnd = () => {
+  setDroneButtonState(false);
+  // If LOOP is armed, tell the controller to restart by returning 'loop'.
+  // Returning any other value (or undefined) means the tour ended.
+  return window.__droneLoopArmed ? 'loop' : undefined;
+};
+droneController.onStart = () => setDroneButtonState(true);
+
+// LOOP toggle: arms the controller to auto-restart when the tour ends.
+// Independent of the DRONE button — you can arm LOOP before pressing D.
+window.__droneLoopArmed = false;
+const loopBtn = document.querySelector('[data-loop-btn]');
+function setLoopButtonState(armed) {
+  if (!loopBtn) return;
+  loopBtn.setAttribute('aria-pressed', armed ? 'true' : 'false');
+  loopBtn.classList.toggle('is-active', armed);
+}
+if (loopBtn) {
+  loopBtn.addEventListener('click', () => {
+    window.__droneLoopArmed = !window.__droneLoopArmed;
+    setLoopButtonState(window.__droneLoopArmed);
+    // Disarming while the tour is mid-loop is a no-op (tour keeps
+    // looping until it ends). Disarming while idle just turns off the
+    // toggle. Starting a tour with LOOP armed → it loops forever.
+  });
+}
 
 function startDroneTour() {
   // Cancel any in-flight viewpoint fly first so it doesn't fight us.
@@ -2268,6 +2313,9 @@ if (droneBtn) {
 window.addEventListener('keydown', (event) => {
   if (event.key === 'd' || event.key === 'D') {
     toggleDroneTour();
+  } else if (event.key === 'l' || event.key === 'L') {
+    // L toggles the LOOP arm without starting a tour.
+    if (loopBtn) loopBtn.click();
   }
 });
 
