@@ -37,38 +37,9 @@
           <span class="hud__title-sep">//</span>
           <span class="hud__title-sub">BLUEPRINT&nbsp;VIEWER</span>
         </div>
-        <div class="hud__caption">
-          Drawing&nbsp;No.&nbsp;<span id="draw-no">S-001/A</span>
-          &nbsp;·&nbsp;Sheet&nbsp;<span id="sheet-no">01&nbsp;of&nbsp;01</span>
-          &nbsp;·&nbsp;Scale&nbsp;<span id="scale">1&nbsp;:&nbsp;200</span>
-        </div>
-        <div class="hud__commit">
-          Build&nbsp;<span id="commit-hash"><a id="commit-hash-link" href="https://github.com/ishadowland/substation-blueprint/commit/ddef04c" target="_blank" rel="noopener">ddef04c</a></span>
-        <script>
-          // Fetch latest commit hash from GitHub API on page load.
-          // Falls back silently to the baked-in hash if the API is unavailable.
-          (async () => {
-            try {
-              const r = await fetch('https://api.github.com/repos/ishadowland/substation-blueprint/commits/main', {
-                headers: { 'Accept': 'application/vnd.github+json' }
-              });
-              if (!r.ok) return;
-              const data = await r.json();
-              const sha = (data.sha || '').slice(0, 7);
-              if (!sha) return;
-              const el = document.getElementById('commit-hash-link');
-              if (el) {
-                el.textContent = sha;
-                el.href = `https://github.com/ishadowland/substation-blueprint/commit/${sha}`;
-              }
-            } catch (_) { /* silent fallback */ }
-          })();
-        </script>
-        </div>
-      </div>
-
-      <div class="hud__right">
-        <span class="hud__label">THEME</span>
+        <!-- Theme buttons moved here from .hud__right so they stack
+             under the title on two lines. The .hud__right column was
+             removed; info panel is hidden until something is selected. -->
         <div class="hud__themes" role="radiogroup" aria-label="Theme picker">
           <button
             type="button"
@@ -121,9 +92,30 @@
         </div>
       </div>
     </header>
+            try {
+              const r = await fetch('https://api.github.com/repos/ishadowland/substation-blueprint/commits/main', {
+                headers: { 'Accept': 'application/vnd.github+json' }
+              });
+              if (!r.ok) return;
+              const data = await r.json();
+              const sha = (data.sha || '').slice(0, 7);
+              if (!sha) return;
+              const el = document.getElementById('commit-hash-link');
+              if (el) {
+                el.textContent = sha;
+                el.href = `https://github.com/ishadowland/substation-blueprint/commit/${sha}`;
+              }
+            } catch (_) { /* silent fallback */ }
+          })();
+        </script>
+        </div>
+      </div>
 
-    <!-- INTRO / INFO PANEL (collapsible) -->
-    <aside class="panel panel--intro" id="panel" aria-label="Component info">
+    </header>
+
+    <!-- INTRO / INFO PANEL — hidden by default, shown only after the user
+         clicks a selectable component. Keeps the HUD uncluttered at rest. -->
+    <aside class="panel panel--intro" id="panel" aria-label="Component info" hidden>
       <div class="panel__row">
         <span class="panel__key">SELECTION</span>
         <span class="panel__val" id="sel-name">NONE</span>

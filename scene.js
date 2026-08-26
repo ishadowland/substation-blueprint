@@ -1746,6 +1746,15 @@ function applySelection(id) {
     selNote.textContent =
       'Click any component to isolate. Click empty space to clear.';
   }
+
+  // Show the info panel only when something is actually selected.
+  // When nothing is selected (or selection cleared), hide it entirely so
+  // the HUD chrome doesn't take up screen space at rest.
+  const panelEl = document.getElementById('panel');
+  if (panelEl) {
+    panelEl.hidden = !id;
+    panelEl.classList.remove('is-collapsed'); // also reset collapse state
+  }
 }
 
 /* ---------------------------------------------------------------------- */

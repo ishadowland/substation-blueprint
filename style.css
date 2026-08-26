@@ -201,8 +201,9 @@ body {
 .hud__left,
 .hud__right {
   display: flex;
-  align-items: baseline;
-  gap: 22px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .hud__title {
@@ -271,6 +272,7 @@ body {
 
 .hud__themes {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
 }
 
