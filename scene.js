@@ -2236,13 +2236,18 @@ class DroneCameraController {
     this._tmpPos.set(px, py, pz);
 
     const forward = this._tmpLook.clone().sub(this._tmpPos).normalize();
-    // Side-step + above-behind offset for chase feel.
-    const chaseBack = forward.clone().multiplyScalar(-6);
+    // Chase distance scales with viewport: on portrait phones a close
+    // chase makes the drone fill the screen; pull back to ~30m behind +
+    // ~10m above so the drone reads at ~10-15% of viewport width.
+    const isMobile = typeof isPortrait === 'function' && isPortrait();
+    const chaseBack = forward.clone().multiplyScalar(isMobile ? -30 : -6);
     const up = new THREE.Vector3(0, 1, 0);
     const right = up.clone().cross(forward).normalize();
+    const upOffset = isMobile ? 10.0 : 2.0;
+    const sideOffset = isMobile ? 1.5 : 0.4;
     this._tmpPos.add(chaseBack);
-    this._tmpPos.add(up.clone().multiplyScalar(2.0));
-    this._tmpPos.add(right.clone().multiplyScalar(0.4));
+    this._tmpPos.add(up.clone().multiplyScalar(upOffset));
+    this._tmpPos.add(right.clone().multiplyScalar(sideOffset));
 
     this.camera.position.copy(this._tmpPos);
     this.camera.lookAt(this._tmpLook);
