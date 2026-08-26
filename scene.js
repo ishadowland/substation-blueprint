@@ -215,12 +215,14 @@ const overlay = document.getElementById('stage-overlay');
 const renderer = new THREE.WebGLRenderer({
   canvas,
   antialias: true,
-  alpha: false,
+  alpha: true,
   powerPreference: 'high-performance',
 });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight, false);
-renderer.setClearColor(new THREE.Color(PALETTES.blueprint.bgCss), 1);
+// In blueprint mode the paper div is the backdrop, so the canvas clears
+// transparent. The applyTheme() handler keeps this in sync.
+renderer.setClearColor(new THREE.Color(PALETTES.blueprint.bgCss), 0);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -1606,8 +1608,17 @@ function applyTheme(name) {
   state.theme = name;
 
   // ----- Background + fog
-  scene.background = new THREE.Color(pal.bgCss);
-  renderer.setClearColor(new THREE.Color(pal.bgCss), 1);
+  // In blueprint mode, the paper div behind the canvas is the backdrop.
+  // Set renderer.clear to alpha=0 so the paper (with grid + paper grain)
+  // shows through. In space/cinematic modes, the canvas itself paints the
+  // background (alpha=1).
+  if (name === 'blueprint') {
+    scene.background = null;
+    renderer.setClearColor(new THREE.Color(pal.bgCss), 0);
+  } else {
+    scene.background = new THREE.Color(pal.bgCss);
+    renderer.setClearColor(new THREE.Color(pal.bgCss), 1);
+  }
   scene.fog.color = new THREE.Color(pal.bgCss);
 
   // ----- Wire materials — in-place color mutate
