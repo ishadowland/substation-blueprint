@@ -1809,7 +1809,10 @@ document.querySelectorAll('[data-theme-btn]').forEach((btn) => {
 
 const VIEWPOINTS = {
   substation: {
-    cameraPos: new THREE.Vector3(-180, 120, 180),
+    // Doubled distance from prior (-180, 120, 180) → ~563m from origin
+    // (was ~281m). Lets the user see the full substation compound + the
+    // surrounding solar farms in a single frame.
+    cameraPos: new THREE.Vector3(-360, 240, 360),
     targetPos: new THREE.Vector3(0, 0, 0),
   },
   farm: {
