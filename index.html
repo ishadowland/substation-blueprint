@@ -42,6 +42,29 @@
           &nbsp;·&nbsp;Sheet&nbsp;<span id="sheet-no">01&nbsp;of&nbsp;01</span>
           &nbsp;·&nbsp;Scale&nbsp;<span id="scale">1&nbsp;:&nbsp;200</span>
         </div>
+        <div class="hud__commit">
+          Build&nbsp;<span id="commit-hash"><a id="commit-hash-link" href="https://github.com/ishadowland/substation-blueprint/commit/017d14d" target="_blank" rel="noopener">017d14d</a></span>
+        <script>
+          // Fetch latest commit hash from GitHub API on page load.
+          // Falls back silently to the baked-in hash if the API is unavailable.
+          (async () => {
+            try {
+              const r = await fetch('https://api.github.com/repos/ishadowland/substation-blueprint/commits/main', {
+                headers: { 'Accept': 'application/vnd.github+json' }
+              });
+              if (!r.ok) return;
+              const data = await r.json();
+              const sha = (data.sha || '').slice(0, 7);
+              if (!sha) return;
+              const el = document.getElementById('commit-hash-link');
+              if (el) {
+                el.textContent = sha;
+                el.href = `https://github.com/ishadowland/substation-blueprint/commit/${sha}`;
+              }
+            } catch (_) { /* silent fallback */ }
+          })();
+        </script>
+        </div>
       </div>
 
       <div class="hud__right">
