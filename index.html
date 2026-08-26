@@ -92,26 +92,7 @@
         </div>
       </div>
     </header>
-            try {
-              const r = await fetch('https://api.github.com/repos/ishadowland/substation-blueprint/commits/main', {
-                headers: { 'Accept': 'application/vnd.github+json' }
-              });
-              if (!r.ok) return;
-              const data = await r.json();
-              const sha = (data.sha || '').slice(0, 7);
-              if (!sha) return;
-              const el = document.getElementById('commit-hash-link');
-              if (el) {
-                el.textContent = sha;
-                el.href = `https://github.com/ishadowland/substation-blueprint/commit/${sha}`;
-              }
-            } catch (_) { /* silent fallback */ }
-          })();
-        </script>
-        </div>
-      </div>
 
-    </header>
 
     <!-- INTRO / INFO PANEL — hidden by default, shown only after the user
          clicks a selectable component. Keeps the HUD uncluttered at rest. -->
