@@ -190,6 +190,10 @@ body {
 
 .hud--top {
   border-bottom: 1px solid var(--color-rule);
+  /* Nudge the title down 5px so it doesn't sit flush against the
+     very top of the viewport. Matches the visual breathing room the
+     bottom HUD gets from its own padding. */
+  padding-top: 5px;
 }
 
 .hud--bottom {
