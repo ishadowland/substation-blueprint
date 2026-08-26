@@ -1998,12 +1998,12 @@ scene.add(droneMarker);
 
    7 phases (keyframe timeline + arc phase for orbit):
         1. takeoff       (0   → 2s)   lift vertically from home
-        2. orbit         (2   → 14s)  full CCW arc around (0,30,-22) at r=45
+        2. orbit         (2   → 14s)  full CCW arc around DRONE_HOME at r=110, y=60
         3. climb         (14  → 17s)  climb to 80m, drift slightly south
         4. race north    (17  → 22s)  straight-line to north tip of farm
-        5. skim south    (22  → 32s)  low-altitude fly-back along farm
-        6. return        (32  → 37s)  back to home + climb
-        7. land          (37  → 42s)  vertical descent + small wobble
+        5. skim south    (22  → 47s)  low-altitude fly-back along farm at y=45 (slower)
+        6. return        (47  → 52s)  back to home + climb
+        7. land          (52  → 57s)  vertical descent + small wobble
    -------------------------------------------------------------------------- */
 
 class DroneCameraController {
@@ -2014,7 +2014,7 @@ class DroneCameraController {
 
     this.isActive = false;
     this.elapsed = 0;
-    this.totalDuration = 42;
+    this.totalDuration = 62;
     this.lastTime = performance.now();
 
     // Save state so we can restore on end.
@@ -2081,15 +2081,16 @@ class DroneCameraController {
     else if (t < 14) {
       const local = t - 2;
       const ang = (local / 12) * Math.PI * 2; // full CCW revolution, 12s
-      const r = 45;
-      const cx = 0;
-      const cz = DRONE_LOOK_BUILDING.z; // orbit center z (same as building z)
+      const r = 110;                            // orbit radius (was 45)
+      const cx = DRONE_HOME.x;                  // orbit center: takeoff point x
+      const cz = DRONE_HOME.z;                  // orbit center: takeoff point z
       px = cx + r * Math.cos(ang);
-      py = 30;
+      py = 60;                                  // orbit altitude (was 30)
       pz = cz + r * Math.sin(ang);
-      lx = DRONE_LOOK_BUILDING.x;
-      ly = DRONE_LOOK_BUILDING.y;
-      lz = DRONE_LOOK_BUILDING.z;
+      // Camera lookAt fixed at the takeoff point throughout the orbit.
+      lx = DRONE_HOME.x;
+      ly = DRONE_HOME.y;
+      lz = DRONE_HOME.z;
     }
     // ----- Phase 3: climb (14–17s) -------------------------------------
     else if (t < 17) {
@@ -2119,23 +2120,23 @@ class DroneCameraController {
       ly = DRONE_LOOK_BUILDING.y + (80 - DRONE_LOOK_BUILDING.y) * lk;
       lz = DRONE_LOOK_BUILDING.z + (-1500 - DRONE_LOOK_BUILDING.z) * lk;
     }
-    // ----- Phase 5: skim south (22–32s) ---------------------------------
-    else if (t < 32) {
-      const k = easeInOutCubic((t - 22) / 10);
+    // ----- Phase 5: skim south (22–47s) ---------------------------------
+    else if (t < 47) {
+      const k = easeInOutCubic((t - 22) / 25);  // 25s duration (speed 40% of prior 10s)
       const sx = 0, sy = 80, sz = DRONE_FARM_Z_NORTH;
-      const ex = 0, ey = 30, ez = DRONE_FARM_Z_SOUTH;
+      const ex = 0, ey = 45, ez = DRONE_FARM_Z_SOUTH;  // skim altitude 45 (was 30)
       px = sx + (ex - sx) * k;
       py = sy + (ey - sy) * k;
       pz = sz + (ez - sz) * k;
       // Look ahead-down at farm rows.
       lx = 0;
-      ly = 30;
+      ly = 45;                                  // look height matches skim altitude
       lz = pz + 60; // slight south-ahead bias
     }
-    // ----- Phase 6: return (32–37s) -------------------------------------
-    else if (t < 37) {
-      const k = easeInOutCubic((t - 32) / 5);
-      const sx = 0, sy = 30, sz = DRONE_FARM_Z_SOUTH;
+    // ----- Phase 6: return (47–52s) -------------------------------------
+    else if (t < 52) {
+      const k = easeInOutCubic((t - 47) / 5);
+      const sx = 0, sy = 45, sz = DRONE_FARM_Z_SOUTH;     // start y matches skim end (45)
       const ex = DRONE_HOME.x, ey = 80, ez = DRONE_HOME.z;
       px = sx + (ex - sx) * k;
       py = sy + (ey - sy) * k;
@@ -2144,9 +2145,9 @@ class DroneCameraController {
       ly = 3;
       lz = DRONE_HOME.z;
     }
-    // ----- Phase 7: land (37–42s) ---------------------------------------
-    else if (t < 42) {
-      const k = easeInOutCubic((t - 37) / 5);
+    // ----- Phase 7: land (52–57s) ---------------------------------------
+    else if (t < 57) {
+      const k = easeInOutCubic((t - 52) / 5);
       const sx = DRONE_HOME.x, sy = 80, sz = DRONE_HOME.z;
       const ex = DRONE_HOME.x, ey = DRONE_HOME.y, ez = DRONE_HOME.z;
       px = sx + (ex - sx) * k;
