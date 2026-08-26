@@ -29,7 +29,7 @@ const PALETTES = {
   blueprint: {
     line: 0xdceafe,
     active: 0x8fd2ff,
-    bgCss: '#0d2c54',
+    bgCss: '#0b2e55',
   },
   // deep space — pure white + amber
   space: {
